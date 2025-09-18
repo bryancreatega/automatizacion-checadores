@@ -1,6 +1,8 @@
 using ComplementosPago.Models;
 using ComplementosPago.ViewModels;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ModelContext.Models;
 using System;
 using System.Globalization;
 using System.Xml.Linq;
@@ -21,6 +23,8 @@ namespace ComplementosPago
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            
+            await ProbarOperacionesFingerPrintsAsync();
             while (!stoppingToken.IsCancellationRequested)
             {
                 var ahora = DateTime.Now;
@@ -193,6 +197,24 @@ namespace ComplementosPago
             }
 
             return detalles;
+        }
+
+        private async Task ProbarOperacionesFingerPrintsAsync()
+        {
+            using (var scope = _services.CreateScope())
+            {
+                var fingerDb = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+
+                try
+                {
+                    var bitacora = await fingerDb.BITA.ToListAsync();
+
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error con FingerPrintsContext");
+                }
+            }
         }
 
     }
