@@ -23,9 +23,12 @@ namespace ComplementosPago
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            await ProbarOperacionesLabora();
-            await ProbarOperacionesFingerPrintsAsync();
-            
+            //await ProbarOperacionesLabora();
+            //await ProbarOperacionesFingerPrintsAsync();
+
+            //await InsertarNuevoChequeo();
+            //await ActualizarChequeo();
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 var ahora = DateTime.Now;
@@ -247,6 +250,68 @@ namespace ComplementosPago
 
                     // Additional diagnostic info
                     _logger.LogError($"Connection string: {laboraDb.Database.GetConnectionString()}");
+                }
+            }
+        }
+
+        private async Task InsertarNuevoChequeo()
+        {
+            using (var scope = _services.CreateScope())
+            {
+                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
+                try
+                {
+                    var nuevoChequeo = new LBCH
+                    {
+                        che_keylec = "1",
+                        che_keyemp = 1001,
+                        che_fecche = DateTime.Now.Date,
+                        che_horche = DateTime.Now.ToString("HH:mm:ss"),
+                        che_status = "A",
+                        che_tipche = "E",
+                        che_keyper = "2024-01"
+                    };
+
+                    laboraDb.molochec.Add(nuevoChequeo);
+                    await laboraDb.SaveChangesAsync();
+
+                    _logger.LogInformation($"Nuevo chequeo insertado con éxito. ID: {nuevoChequeo.che_keylec}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al insertar nuevo chequeo");
+                }
+            }
+        }
+
+        private async Task ActualizarChequeo()
+        {
+            using (var scope = _services.CreateScope())
+            {
+                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
+                try
+                {
+                    var chequeoExistente = await laboraDb.molochec
+                        .FirstOrDefaultAsync(c => c.che_keylec == "1");
+
+                    if (chequeoExistente != null)
+                    {
+                        chequeoExistente.che_status = "I";
+                        chequeoExistente.che_horche = DateTime.Now.ToString("HH:mm:ss");
+
+                        laboraDb.molochec.Update(chequeoExistente);
+                        await laboraDb.SaveChangesAsync();
+
+                        _logger.LogInformation($"Chequeo 1 actualizado con éxito");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"No se encontró el chequeo con key: 1");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al actualizar chequeo");
                 }
             }
         }

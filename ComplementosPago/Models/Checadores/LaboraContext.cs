@@ -71,7 +71,9 @@ namespace ModelContext.Models
                 entity.Property(e => e.emp_status)
                     .HasColumnType("smallint");
             });
-            builder.Entity<LBCH>(entity => { entity.HasNoKey(); });
+            builder.Entity<LBCH>(entity => {
+                entity.HasKey(e => e.che_keylec);
+            });
 
             var cascadas = builder.Model.GetEntityTypes()
 						 .SelectMany(t => t.GetForeignKeys())
