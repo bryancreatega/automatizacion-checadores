@@ -23,8 +23,9 @@ namespace ComplementosPago
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            
+            await ProbarOperacionesLabora();
             await ProbarOperacionesFingerPrintsAsync();
+            
             while (!stoppingToken.IsCancellationRequested)
             {
                 var ahora = DateTime.Now;
@@ -208,11 +209,44 @@ namespace ComplementosPago
                 try
                 {
                     var bitacora = await fingerDb.BITA.ToListAsync();
+                    _logger.LogInformation($"Retrieved {bitacora.Count} bitacora records");
 
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error con FingerPrintsContext");
+                }
+            }
+        }
+
+        private async Task ProbarOperacionesLabora()
+        {
+            using (var scope = _services.CreateScope())
+            {
+                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
+
+                try
+                {
+                    // Test if database can be connected to
+                    if (await laboraDb.Database.CanConnectAsync())
+                    {
+                        _logger.LogInformation("Successfully connected to database");
+
+                        var molochec = await laboraDb.molochec.ToListAsync();
+
+                        _logger.LogInformation($"Retrieved {molochec.Count} nmcoempl records");
+                    }
+                    else
+                    {
+                        _logger.LogError("Cannot connect to database");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error con LaboraContext");
+
+                    // Additional diagnostic info
+                    _logger.LogError($"Connection string: {laboraDb.Database.GetConnectionString()}");
                 }
             }
         }

@@ -13,6 +13,9 @@ builder.Services.AddDbContext<ComplementoDbContext>(options =>
 builder.Services.AddDbContext<FingerPrintsContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("conLectores")));
 
+builder.Services.AddDbContext<LaboraContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("conLabora")));
+
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

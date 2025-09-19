@@ -14,6 +14,10 @@ namespace ModelContext.Models
 {
     public class LaboraContext : DbContext
     {
+        public LaboraContext(DbContextOptions<LaboraContext> options)
+        : base(options)
+        {
+        }
         //public virtual Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder<TEntity> HasNoKey();
         //public DbSet<LBCH> molochec { get; set; }
         public DbSet<LBPR> nmloperi { get; set; }
@@ -56,7 +60,17 @@ namespace ModelContext.Models
 
 			//builder.Entity<LBPR>().HasNoKey();
 			builder.Entity<LBPR>(entity => { entity.HasNoKey(); });
-            builder.Entity<LBEM>(entity => { entity.HasNoKey(); });
+            builder.Entity<LBEM>(entity => { 
+				entity.HasNoKey();
+                entity.Property(e => e.emp_keyemp)
+					.HasColumnType("smallint");
+
+                entity.Property(e => e.emp_keypro)
+                    .HasColumnType("smallint");
+
+                entity.Property(e => e.emp_status)
+                    .HasColumnType("smallint");
+            });
             builder.Entity<LBCH>(entity => { entity.HasNoKey(); });
 
             var cascadas = builder.Model.GetEntityTypes()
