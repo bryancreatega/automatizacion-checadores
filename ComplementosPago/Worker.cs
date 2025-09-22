@@ -1,10 +1,12 @@
 using ComplementosPago.Models;
 using ComplementosPago.ViewModels;
+using Library;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ModelContext.Models;
 using System;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 
 
@@ -14,6 +16,7 @@ namespace ComplementosPago
     {
         private readonly ILogger<Worker> _logger;
         private readonly IServiceProvider _services;
+        libFprZkx libFprZkx;
 
         public Worker(ILogger<Worker> logger, IServiceProvider services)
         {
@@ -23,9 +26,13 @@ namespace ComplementosPago
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            libFprZkx = new libFprZkx();
+
+
+            await InformacionPorLector();
             await ProbarOperacionesLabora();
             await ProbarOperacionesFingerPrintsAsync();
-            
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 var ahora = DateTime.Now;
@@ -48,6 +55,65 @@ namespace ComplementosPago
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+            }
+        }
+
+        private static int KeyGral = 0;
+
+        private async Task InformacionPorLector()
+        {
+
+            using (var scope = _services.CreateScope())
+            {
+                var fprs = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+
+                try
+                {
+                    // Test if database can be connected to
+                    if (await fprs.Database.CanConnectAsync())
+                    {
+                        _logger.LogInformation("Successfully connected to database");
+
+                        var lectores = await fprs.FPRS.Where(e => e.fpr_sttfpr == 1).ToListAsync();
+
+                        #region variables de salida
+
+                        string fpr_macfpr, fpr_frmfpr, fpr_cdgfpr, fpr_plffpr, fpr_srnfpr, fpr_sdkfpr, fpr_thrfpr;
+
+                        int fpr_fpafpr, fpr_fcafpr, fpr_usrfpr, fpr_admfpr, fpr_pwdfpr, fpr_oplfpr, fpr_attfpr, fpr_facfpr, fpr_fpnfpr;
+
+                        #endregion
+
+                        foreach (var l in lectores)
+                        {
+                            int result = 0;
+                            if (libFprZkx.zktConx(l.fpr_ipafpr, l.fpr_numfpr))
+                            {
+
+                                result = libFprZkx.zktInfo(l.fpr_numfpr, true, out fpr_macfpr, out fpr_frmfpr, out fpr_cdgfpr, out fpr_plffpr, out fpr_srnfpr, out fpr_sdkfpr, out fpr_thrfpr, out fpr_fpafpr,
+                                                       out fpr_fcafpr, out fpr_usrfpr, out fpr_admfpr, out fpr_pwdfpr, out fpr_oplfpr, out fpr_attfpr, out fpr_facfpr, out fpr_fpnfpr);
+
+                            }
+                            else
+                            {
+                                ///se marca como error, se detiene el proceso para este lector y se continua con el siguiente
+                            }
+                        }
+
+                        //_logger.LogInformation($"Retrieved {molochec.Count} nmcoempl records");
+                    }
+                    else
+                    {
+                        _logger.LogError("Cannot connect to database");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error con LaboraContext");
+
+                    // Additional diagnostic info
+                    //_logger.LogError($"Connection string: {laboraDb.Database.GetConnectionString()}");
+                }
             }
         }
 

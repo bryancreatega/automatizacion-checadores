@@ -19,21 +19,21 @@ namespace ModelContext.Models
         [StringLength(100)]
         public string fpr_ipafpr { get; set; }//IP
         [StringLength(100)]
-        public string fpr_macfpr { get; set; }//MAC
+        public string? fpr_macfpr { get; set; }//MAC
         [StringLength(100)]
         public string fpr_prtfpr { get; set; }//Puerto
         [StringLength(100)]
-        public string fpr_frmfpr { get; set; }//FrimWare Version
+        public string? fpr_frmfpr { get; set; }//FrimWare Version
         [StringLength(100)]
-        public string fpr_cdgfpr { get; set; }//Producto Code//Device Name--nuevo
+        public string? fpr_cdgfpr { get; set; }//Producto Code//Device Name--nuevo
         [StringLength(100)]
-        public string fpr_plffpr { get; set; }//Plataform
+        public string? fpr_plffpr { get; set; }//Plataform
         [StringLength(100)]
-        public string fpr_srnfpr { get; set; }//Serial Numner
+        public string? fpr_srnfpr { get; set; }//Serial Numner
         [StringLength(100)]
-        public string fpr_sdkfpr { get; set; }//Sdk Version
+        public string? fpr_sdkfpr { get; set; }//Sdk Version
         [StringLength(100)]
-        public string fpr_thrfpr { get; set; }//Manufature Time
+        public string? fpr_thrfpr { get; set; }//Manufature Time
         public int fpr_fpafpr { get; set; }//Algoritmo Huella--nuevo
         public int fpr_fcafpr { get; set; }//Algoritmo Rostro--nuevo
         public int fpr_usrfpr { get; set; }//User Count--nuevo
@@ -50,7 +50,7 @@ namespace ModelContext.Models
         public TimeSpan fpr_horfpr { get; set; }
         public int fpr_sttfpr { get; set; }//Verifica de que se realizo el respaldo
         [StringLength(100)]
-        public string fpr_blqfpr { get; set; }//Estaus del lector en nombre
+        public string? fpr_blqfpr { get; set; }//Estaus del lector en nombre
         public int fpr_typfpr { get; set; }//Tipo de Lector, huella, rostro o ambos
         [ForeignKey("ZON")] 
         public int zon_keyzon { get; set; }
