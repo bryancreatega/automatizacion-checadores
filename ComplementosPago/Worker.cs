@@ -29,9 +29,9 @@ namespace ComplementosPago
             libFprZkx = new libFprZkx();
 
 
-            await InformacionPorLector();
-            await ProbarOperacionesLabora();
-            await ProbarOperacionesFingerPrintsAsync();
+            //await InformacionPorLector();
+            //  await ProbarOperacionesLabora();
+            //  await ProbarOperacionesFingerPrintsAsync();  
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -126,146 +126,146 @@ namespace ComplementosPago
 
         //    var carpetasEmpresas = Directory.GetDirectories(rutaBase);
 
-        //    foreach (var carpeta in carpetasEmpresas)
-        //    {
-        //        var empresa = Path.GetFileName(carpeta);
-        //        var archivosXml = Directory.GetFiles(carpeta, "*.xml");
-        //        int totalProcesados = 0;
+            //    foreach (var carpeta in carpetasEmpresas)
+            //    {
+            //        var empresa = Path.GetFileName(carpeta);
+            //        var archivosXml = Directory.GetFiles(carpeta, "*.xml");
+            //        int totalProcesados = 0;
 
-        //        foreach (var archivo in archivosXml)
-        //        {
-        //            var nombreArchivo = Path.GetFileName(archivo);
-        //            var yaExiste = await db.LecturaComplementos
-        //                .AnyAsync(x => x.NombreArchivo == nombreArchivo);
+            //        foreach (var archivo in archivosXml)
+            //        {
+            //            var nombreArchivo = Path.GetFileName(archivo);
+            //            var yaExiste = await db.LecturaComplementos
+            //                .AnyAsync(x => x.NombreArchivo == nombreArchivo);
 
-        //            if (yaExiste)
-        //            {
-        //                db.LecturaComplementos.Add(new LecturaComplemento
-        //                {
-        //                    Empresa = empresa,
-        //                    NombreArchivo = nombreArchivo,
-        //                    Fecha = DateTime.Now,
-        //                    Procesado = false,
-        //                    MotivoNoProcesado = "Archivo previamente procesado"
-        //                });
-        //                continue;
-        //            }
+            //            if (yaExiste)
+            //            {
+            //                db.LecturaComplementos.Add(new LecturaComplemento
+            //                {
+            //                    Empresa = empresa,
+            //                    NombreArchivo = nombreArchivo,
+            //                    Fecha = DateTime.Now,
+            //                    Procesado = false,
+            //                    MotivoNoProcesado = "Archivo previamente procesado"
+            //                });
+            //                continue;
+            //            }
 
-        //            try
-        //            {
-        //                var lectura = new LecturaComplemento
-        //                {
-        //                    Empresa = empresa,
-        //                    NombreArchivo = nombreArchivo,
-        //                    Fecha = DateTime.Now,
-        //                    Procesado = true,
-        //                    MotivoNoProcesado = null
-        //                };
+            //            try
+            //            {
+            //                var lectura = new LecturaComplemento
+            //                {
+            //                    Empresa = empresa,
+            //                    NombreArchivo = nombreArchivo,
+            //                    Fecha = DateTime.Now,
+            //                    Procesado = true,
+            //                    MotivoNoProcesado = null
+            //                };
 
-        //                db.LecturaComplementos.Add(lectura);
-        //                await db.SaveChangesAsync(); // Necesario para obtener lectura.Id
+            //                db.LecturaComplementos.Add(lectura);
+            //                await db.SaveChangesAsync(); // Necesario para obtener lectura.Id
 
-        //                var detalles = LeerArchivoXml(archivo, empresa, lectura.Id);
-        //                if (detalles != null && detalles.Any())
-        //                {
-        //                    db.DetalleLecturaComplementos.AddRange(detalles);
-        //                }
+            //                var detalles = LeerArchivoXml(archivo, empresa, lectura.Id);
+            //                if (detalles != null && detalles.Any())
+            //                {
+            //                    db.DetalleLecturaComplementos.AddRange(detalles);
+            //                }
 
-        //                db.ComplementoEnvios.Add(new ComplementoEnvio
-        //                {
-        //                    Empresa = empresa,
-        //                    NombreArchivo = nombreArchivo,
-        //                    FechaRegistro = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-        //                    Procesado = false,
-        //                    ErrorSap = null,
-        //                    FechaEnvio = null,
-        //                    Encontrado = false
-        //                });
+            //                db.ComplementoEnvios.Add(new ComplementoEnvio
+            //                {
+            //                    Empresa = empresa,
+            //                    NombreArchivo = nombreArchivo,
+            //                    FechaRegistro = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            //                    Procesado = false,
+            //                    ErrorSap = null,
+            //                    FechaEnvio = null,
+            //                    Encontrado = false
+            //                });
 
-        //                totalProcesados++;
-        //            }
-        //            catch (Exception ex)
-        //            {
-        //                db.LecturaComplementos.Add(new LecturaComplemento
-        //                {
-        //                    Empresa = empresa,
-        //                    NombreArchivo = nombreArchivo,
-        //                    Fecha = DateTime.Now,
-        //                    Procesado = false,
-        //                    MotivoNoProcesado = $"Error de lectura: {ex.Message}"
-        //                });
-        //            }
-        //        }
+            //                totalProcesados++;
+            //            }
+            //            catch (Exception ex)
+            //            {
+            //                db.LecturaComplementos.Add(new LecturaComplemento
+            //                {
+            //                    Empresa = empresa,
+            //                    NombreArchivo = nombreArchivo,
+            //                    Fecha = DateTime.Now,
+            //                    Procesado = false,
+            //                    MotivoNoProcesado = $"Error de lectura: {ex.Message}"
+            //                });
+            //            }
+            //        }
 
-        //        db.LogsEjecucion.Add(new LogEjecucion
-        //        {
-        //            Carpeta = empresa,
-        //            Fecha = DateTime.Now,
-        //            Archivos = totalProcesados
-        //        });
+            //        db.LogsEjecucion.Add(new LogEjecucion
+            //        {
+            //            Carpeta = empresa,
+            //            Fecha = DateTime.Now,
+            //            Archivos = totalProcesados
+            //        });
 
-        //        await db.SaveChangesAsync();
-        //    }
-        //}
+            //        await db.SaveChangesAsync();
+            //    }
+            //}
 
 
 
-        //public List<DetalleLecturaComplemento> LeerArchivoXml(string rutaArchivo, string empresa, int lecturaId)
-        //{
-        //    var xdoc = XDocument.Load(rutaArchivo);
-        //    XNamespace cfdi = "http://www.sat.gob.mx/cfd/4";
-        //    XNamespace pago = "http://www.sat.gob.mx/Pagos20";
-        //    XNamespace tfd = "http://www.sat.gob.mx/TimbreFiscalDigital";
+            //public List<DetalleLecturaComplemento> LeerArchivoXml(string rutaArchivo, string empresa, int lecturaId)
+            //{
+            //    var xdoc = XDocument.Load(rutaArchivo);
+            //    XNamespace cfdi = "http://www.sat.gob.mx/cfd/4";
+            //    XNamespace pago = "http://www.sat.gob.mx/Pagos20";
+            //    XNamespace tfd = "http://www.sat.gob.mx/TimbreFiscalDigital";
 
-        //    var comprobante = xdoc.Root;
-        //    var complemento = comprobante.Element(cfdi + "Complemento");
-        //    var timbre = complemento.Element(tfd + "TimbreFiscalDigital");
-        //    var pagos = complemento.Element(pago + "Pagos");
-        //    var pagoNodo = pagos.Element(pago + "Pago");
+            //    var comprobante = xdoc.Root;
+            //    var complemento = comprobante.Element(cfdi + "Complemento");
+            //    var timbre = complemento.Element(tfd + "TimbreFiscalDigital");
+            //    var pagos = complemento.Element(pago + "Pagos");
+            //    var pagoNodo = pagos.Element(pago + "Pago");
 
-        //    var emisor = comprobante.Element(cfdi + "Emisor");
-        //    var receptor = comprobante.Element(cfdi + "Receptor");
+            //    var emisor = comprobante.Element(cfdi + "Emisor");
+            //    var receptor = comprobante.Element(cfdi + "Receptor");
 
-        //    var detalles = new List<DetalleLecturaComplemento>();
-        //    var doctosRelacionados = pagoNodo.Elements(pago + "DoctoRelacionado");
+            //    var detalles = new List<DetalleLecturaComplemento>();
+            //    var doctosRelacionados = pagoNodo.Elements(pago + "DoctoRelacionado");
 
-        //    foreach (var docto in doctosRelacionados)
-        //    {
-        //        detalles.Add(new DetalleLecturaComplemento
-        //        {
-        //            LecturaComplementoId = lecturaId,
-        //            Archivo = Path.GetFileName(rutaArchivo),
-        //            UUID = timbre?.Attribute("UUID")?.Value,
-        //            VerificacionSat = timbre?.Attribute("SelloSAT")?.Value,
-        //            Fecha = comprobante.Attribute("Fecha")?.Value?.Substring(0, 10),
-        //            Hora = comprobante.Attribute("Fecha")?.Value?.Substring(11),
-        //            FechaPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(0, 10),
-        //            HoraPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(11),
-        //            Serie = comprobante.Attribute("Serie")?.Value,
-        //            Folio = comprobante.Attribute("Folio")?.Value,
-        //            RfcRecepetor = receptor?.Attribute("Rfc")?.Value,
-        //            NombreReceptor = receptor?.Attribute("Nombre")?.Value,
-        //            Moneda = comprobante.Attribute("Moneda")?.Value,
-        //            Monto = pagoNodo?.Attribute("Monto")?.Value,
-        //            FormaPago = pagoNodo?.Attribute("FormaDePagoP")?.Value,
-        //            UuidDctoRel = docto?.Attribute("IdDocumento")?.Value,
-        //            SerieRel = docto?.Attribute("Serie")?.Value,
-        //            FolioRel = docto?.Attribute("Folio")?.Value,
-        //            MonedaRel = docto?.Attribute("MonedaDR")?.Value,
-        //            NumeroParcialidad = docto?.Attribute("NumParcialidad")?.Value,
-        //            ImporteSaldoAnt = docto?.Attribute("ImpSaldoAnt")?.Value,
-        //            ImportePagado = docto?.Attribute("ImpPagado")?.Value,
-        //            ImporteSaldoInsoluto = docto?.Attribute("ImpSaldoInsoluto")?.Value,
-        //            MetodoPagoRel = docto?.Attribute("ObjetoImpDR")?.Value,
-        //            RfcEmisor = emisor?.Attribute("Rfc")?.Value,
-        //            NombreEmisor = emisor?.Attribute("Nombre")?.Value,
-        //            Complementos = complemento.ToString(),
-        //            Empresa = empresa,
-        //        });
-        //    }
+            //    foreach (var docto in doctosRelacionados)
+            //    {
+            //        detalles.Add(new DetalleLecturaComplemento
+            //        {
+            //            LecturaComplementoId = lecturaId,
+            //            Archivo = Path.GetFileName(rutaArchivo),
+            //            UUID = timbre?.Attribute("UUID")?.Value,
+            //            VerificacionSat = timbre?.Attribute("SelloSAT")?.Value,
+            //            Fecha = comprobante.Attribute("Fecha")?.Value?.Substring(0, 10),
+            //            Hora = comprobante.Attribute("Fecha")?.Value?.Substring(11),
+            //            FechaPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(0, 10),
+            //            HoraPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(11),
+            //            Serie = comprobante.Attribute("Serie")?.Value,
+            //            Folio = comprobante.Attribute("Folio")?.Value,
+            //            RfcRecepetor = receptor?.Attribute("Rfc")?.Value,
+            //            NombreReceptor = receptor?.Attribute("Nombre")?.Value,
+            //            Moneda = comprobante.Attribute("Moneda")?.Value,
+            //            Monto = pagoNodo?.Attribute("Monto")?.Value,
+            //            FormaPago = pagoNodo?.Attribute("FormaDePagoP")?.Value,
+            //            UuidDctoRel = docto?.Attribute("IdDocumento")?.Value,
+            //            SerieRel = docto?.Attribute("Serie")?.Value,
+            //            FolioRel = docto?.Attribute("Folio")?.Value,
+            //            MonedaRel = docto?.Attribute("MonedaDR")?.Value,
+            //            NumeroParcialidad = docto?.Attribute("NumParcialidad")?.Value,
+            //            ImporteSaldoAnt = docto?.Attribute("ImpSaldoAnt")?.Value,
+            //            ImportePagado = docto?.Attribute("ImpPagado")?.Value,
+            //            ImporteSaldoInsoluto = docto?.Attribute("ImpSaldoInsoluto")?.Value,
+            //            MetodoPagoRel = docto?.Attribute("ObjetoImpDR")?.Value,
+            //            RfcEmisor = emisor?.Attribute("Rfc")?.Value,
+            //            NombreEmisor = emisor?.Attribute("Nombre")?.Value,
+            //            Complementos = complemento.ToString(),
+            //            Empresa = empresa,
+            //        });
+            //    }
 
-        //    return detalles;
-        //}
+            //    return detalles;
+            //}
 
         private async Task ProbarOperacionesFingerPrintsAsync()
         {
