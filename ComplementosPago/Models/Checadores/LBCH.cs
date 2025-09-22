@@ -9,6 +9,7 @@ namespace ModelContext.Models
 {
     public class LBCH
     {
+        [Key]
         [StringLength(12)]
         public string? che_keylec { get; set; }
         public int che_keyemp { get; set; }
