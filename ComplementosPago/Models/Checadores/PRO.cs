@@ -13,5 +13,6 @@ namespace ModelContext.Models
         public string Descripcion { get; set; }
         public bool Activo { get; set; }
         public bool Reintentar { get; set; }
+        public int Orden { get; set; }
     }
 }

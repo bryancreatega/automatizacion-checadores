@@ -1,3 +1,4 @@
+using ComplementosPago.Controllers;
 using ComplementosPago.Models;
 using ComplementosPago.ViewModels;
 using Library;
@@ -16,22 +17,34 @@ namespace ComplementosPago
     {
         private readonly ILogger<Worker> _logger;
         private readonly IServiceProvider _services;
-        libFprZkx libFprZkx;
+        private readonly LectoresController _lectoresController;
+        private readonly RespaldoLectores _respaldoLectores;
+        private readonly ExtraccionChecadas _extraccionChecadas;
+        private readonly EnvioLabora _envioLabora;
 
-        public Worker(ILogger<Worker> logger, IServiceProvider services)
+        private readonly libFprZkx _libFprZkx;
+        List<FPR> lstFgprs = new List<FPR>();
+
+        public Worker(
+            ILogger<Worker> logger, 
+            IServiceProvider services,
+            LectoresController lectoresController,
+            RespaldoLectores respaldoLectores,
+            ExtraccionChecadas extraccionChecadas,
+            EnvioLabora envioLabora
+            )
         {
             _logger = logger;
             _services = services;
+            _lectoresController = lectoresController;
+            _extraccionChecadas = extraccionChecadas;
+            _respaldoLectores = respaldoLectores;
+            _envioLabora = envioLabora;
+            _libFprZkx = new libFprZkx();
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            libFprZkx = new libFprZkx();
-
-
-            //await InformacionPorLector();
-            //  await ProbarOperacionesLabora();
-            //  await ProbarOperacionesFingerPrintsAsync();  
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -45,338 +58,152 @@ namespace ComplementosPago
 
                     var ejecuciones = await db.ATMS
                         .Where(t => t.dia.ToLower() == dia && t.hora == horaMinuto)
-                        .ToListAsync(stoppingToken);
+                        .ToListAsync();
 
                     if (ejecuciones.Any())
                     {
                         _logger.LogInformation("Ejecutando tarea programada para {dia} a las {hora}", dia, horaMinuto);
-                        await ActualizarChequeo();
 
+                        var procesosAEjecutar = new List<PRO>();
+
+                        foreach (var ejecucion in ejecuciones)
+                        {
+                            if (ejecucion.ProcesoId == null)
+                            {
+                                var procesos = await db.PRO
+                                    .Where(p => p.Activo == true)
+                                    .OrderBy(p => p.Orden)
+                                    .ToListAsync();
+
+                                procesosAEjecutar.AddRange(procesos);
+                            }
+                            else
+                            {
+                                var proceso = await db.PRO
+                                    .Where(p => p.Id == ejecucion.ProcesoId && p.Activo == true)
+                                    .FirstOrDefaultAsync();
+
+                                if (proceso != null)
+                                {
+                                    procesosAEjecutar.Add(proceso);
+                                }
+                            }
+                        }
+
+                        procesosAEjecutar = procesosAEjecutar
+                            .GroupBy(p => p.Id)
+                            .Select(g => g.First())
+                            .OrderBy(p => p.Orden)
+                            .ToList();
+
+
+                        var lectores = await db.FPRS.Where(e => e.fpr_sttfpr == 1).ToListAsync();
+
+                        if (procesosAEjecutar.Any() && lectores.Any())
+                        {
+                            _logger.LogInformation("Ejecutando {cantidad} procesos para {cantidadLectores} lectores", procesosAEjecutar.Count, lectores.Count);
+
+                            foreach (var lector in lectores)
+                            {
+                                _logger.LogInformation("Procesando lector: {ip} - {numero}", lector.fpr_ipafpr, lector.fpr_numfpr);
+                                List<OCD> lstOcd = new List<OCD>();
+                                // Ejecutar procesos para este lector
+                                foreach (var proceso in procesosAEjecutar)
+                                {
+                                    try
+                                    {
+                                        _logger.LogInformation("Ejecutando proceso: {nombre} (ID: {id}) para lector {ip}",
+                                            proceso.Nombre, proceso.Id, lector.fpr_ipafpr);
+
+                                        bool conexionExitosa = await _lectoresController.IntentarConexionLector(lector, 3, db);
+
+                                        if (!conexionExitosa)
+                                        {
+                                            _logger.LogWarning("No se pudo establecer conexión con el lector {ip} después de 3 intentos. Continuando con el siguiente lector.",
+                                                lector.fpr_ipafpr);
+                                            continue;
+                                        }
+
+                                        _logger.LogInformation("Conexión exitosa con el lector {ip}. Ejecutando procesos...",
+                                            lector.fpr_ipafpr);
+
+
+                                        bool resultado = false;
+                                        
+
+                                        switch (proceso.Nombre)
+                                        {
+                                            case "RELE":
+                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db);
+                                                break;
+                                            case "EXCH":
+                                                resultado = await _extraccionChecadas.realizarExtracciones(lector);
+                                                break;
+                                            case "ENLA":
+                                                resultado = await _envioLabora.realizarEnvioLabora(lector, db); ;
+                                                break;
+                                            case "ELCH":
+                                                resultado = true;
+                                                break;
+                                            default:
+                                                _logger.LogWarning("Proceso {nombre} no existe", proceso.Nombre);
+                                                resultado = false;
+                                                break;
+                                        }
+
+                                        if (!resultado)
+                                        {
+                                            _logger.LogError("El proceso {nombre} (Orden: {orden}) falló para el lector {nombre}.",
+                                                proceso.Nombre, proceso.Orden, lector.fpr_namfpr);
+
+                                            var procesosPendientes = procesosAEjecutar
+                                                .Where(p => p.Orden > proceso.Orden)
+                                                .Select(p => p.Nombre)
+                                                .ToList();
+
+                                            if (procesosPendientes.Any())
+                                            {
+                                                _logger.LogWarning("Procesos que no se ejecutarán para el lector {ip}: {procesosPendientes}",
+                                                    lector.fpr_namfpr, string.Join(", ", procesosPendientes));
+                                            }
+
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            _logger.LogInformation("Proceso {nombre} (Orden: {orden}) ejecutado correctamente para el lector {ip}",
+                                                proceso.Nombre, proceso.Orden, lector.fpr_namfpr);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogError(ex, "Error al ejecutar el proceso {nombre} (ID: {id}) para el lector {ip}",
+                                            proceso.Nombre, proceso.Id, lector.fpr_namfpr);
+
+                                        if (proceso.Reintentar)
+                                        {
+                                            _logger.LogInformation("Reintentando proceso: {nombre} para lector {ip}",
+                                                proceso.Nombre, lector.fpr_namfpr);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (!lectores.Any())
+                            {
+                                _logger.LogInformation("No hay lectores activos para procesar");
+                            }
+                            else
+                            {
+                                _logger.LogInformation("No hay procesos activos para ejecutar");
+                            }
+                        }
                     }
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
-            }
-        }
-
-        private static int KeyGral = 0;
-
-        private async Task InformacionPorLector()
-        {
-
-            using (var scope = _services.CreateScope())
-            {
-                var fprs = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
-
-                try
-                {
-                    // Test if database can be connected to
-                    if (await fprs.Database.CanConnectAsync())
-                    {
-                        _logger.LogInformation("Successfully connected to database");
-
-                        var lectores = await fprs.FPRS.Where(e => e.fpr_sttfpr == 1).ToListAsync();
-
-                        #region variables de salida
-
-                        string fpr_macfpr, fpr_frmfpr, fpr_cdgfpr, fpr_plffpr, fpr_srnfpr, fpr_sdkfpr, fpr_thrfpr;
-
-                        int fpr_fpafpr, fpr_fcafpr, fpr_usrfpr, fpr_admfpr, fpr_pwdfpr, fpr_oplfpr, fpr_attfpr, fpr_facfpr, fpr_fpnfpr;
-
-                        #endregion
-
-                        foreach (var l in lectores)
-                        {
-                            int result = 0;
-                            if (libFprZkx.zktConx(l.fpr_ipafpr, l.fpr_numfpr))
-                            {
-
-                                result = libFprZkx.zktInfo(l.fpr_numfpr, true, out fpr_macfpr, out fpr_frmfpr, out fpr_cdgfpr, out fpr_plffpr, out fpr_srnfpr, out fpr_sdkfpr, out fpr_thrfpr, out fpr_fpafpr,
-                                                       out fpr_fcafpr, out fpr_usrfpr, out fpr_admfpr, out fpr_pwdfpr, out fpr_oplfpr, out fpr_attfpr, out fpr_facfpr, out fpr_fpnfpr);
-
-                            }
-                            else
-                            {
-                                ///se marca como error, se detiene el proceso para este lector y se continua con el siguiente
-                            }
-                        }
-
-                        //_logger.LogInformation($"Retrieved {molochec.Count} nmcoempl records");
-                    }
-                    else
-                    {
-                        _logger.LogError("Cannot connect to database");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error con LaboraContext");
-
-                    // Additional diagnostic info
-                    //_logger.LogError($"Connection string: {laboraDb.Database.GetConnectionString()}");
-                }
-            }
-        }
-
-        public async Task LeerComplementosAsync(ComplementoDbContext db)
-        {
-            var rutaBase = @"C:\Complementos";
-            if (!Directory.Exists(rutaBase))
-                return;
-
-        //    var carpetasEmpresas = Directory.GetDirectories(rutaBase);
-
-            //    foreach (var carpeta in carpetasEmpresas)
-            //    {
-            //        var empresa = Path.GetFileName(carpeta);
-            //        var archivosXml = Directory.GetFiles(carpeta, "*.xml");
-            //        int totalProcesados = 0;
-
-            //        foreach (var archivo in archivosXml)
-            //        {
-            //            var nombreArchivo = Path.GetFileName(archivo);
-            //            var yaExiste = await db.LecturaComplementos
-            //                .AnyAsync(x => x.NombreArchivo == nombreArchivo);
-
-            //            if (yaExiste)
-            //            {
-            //                db.LecturaComplementos.Add(new LecturaComplemento
-            //                {
-            //                    Empresa = empresa,
-            //                    NombreArchivo = nombreArchivo,
-            //                    Fecha = DateTime.Now,
-            //                    Procesado = false,
-            //                    MotivoNoProcesado = "Archivo previamente procesado"
-            //                });
-            //                continue;
-            //            }
-
-            //            try
-            //            {
-            //                var lectura = new LecturaComplemento
-            //                {
-            //                    Empresa = empresa,
-            //                    NombreArchivo = nombreArchivo,
-            //                    Fecha = DateTime.Now,
-            //                    Procesado = true,
-            //                    MotivoNoProcesado = null
-            //                };
-
-            //                db.LecturaComplementos.Add(lectura);
-            //                await db.SaveChangesAsync(); // Necesario para obtener lectura.Id
-
-            //                var detalles = LeerArchivoXml(archivo, empresa, lectura.Id);
-            //                if (detalles != null && detalles.Any())
-            //                {
-            //                    db.DetalleLecturaComplementos.AddRange(detalles);
-            //                }
-
-            //                db.ComplementoEnvios.Add(new ComplementoEnvio
-            //                {
-            //                    Empresa = empresa,
-            //                    NombreArchivo = nombreArchivo,
-            //                    FechaRegistro = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            //                    Procesado = false,
-            //                    ErrorSap = null,
-            //                    FechaEnvio = null,
-            //                    Encontrado = false
-            //                });
-
-            //                totalProcesados++;
-            //            }
-            //            catch (Exception ex)
-            //            {
-            //                db.LecturaComplementos.Add(new LecturaComplemento
-            //                {
-            //                    Empresa = empresa,
-            //                    NombreArchivo = nombreArchivo,
-            //                    Fecha = DateTime.Now,
-            //                    Procesado = false,
-            //                    MotivoNoProcesado = $"Error de lectura: {ex.Message}"
-            //                });
-            //            }
-            //        }
-
-            //        db.LogsEjecucion.Add(new LogEjecucion
-            //        {
-            //            Carpeta = empresa,
-            //            Fecha = DateTime.Now,
-            //            Archivos = totalProcesados
-            //        });
-
-            //        await db.SaveChangesAsync();
-            //    }
-            //}
-
-
-
-            //public List<DetalleLecturaComplemento> LeerArchivoXml(string rutaArchivo, string empresa, int lecturaId)
-            //{
-            //    var xdoc = XDocument.Load(rutaArchivo);
-            //    XNamespace cfdi = "http://www.sat.gob.mx/cfd/4";
-            //    XNamespace pago = "http://www.sat.gob.mx/Pagos20";
-            //    XNamespace tfd = "http://www.sat.gob.mx/TimbreFiscalDigital";
-
-            //    var comprobante = xdoc.Root;
-            //    var complemento = comprobante.Element(cfdi + "Complemento");
-            //    var timbre = complemento.Element(tfd + "TimbreFiscalDigital");
-            //    var pagos = complemento.Element(pago + "Pagos");
-            //    var pagoNodo = pagos.Element(pago + "Pago");
-
-            //    var emisor = comprobante.Element(cfdi + "Emisor");
-            //    var receptor = comprobante.Element(cfdi + "Receptor");
-
-            //    var detalles = new List<DetalleLecturaComplemento>();
-            //    var doctosRelacionados = pagoNodo.Elements(pago + "DoctoRelacionado");
-
-            //    foreach (var docto in doctosRelacionados)
-            //    {
-            //        detalles.Add(new DetalleLecturaComplemento
-            //        {
-            //            LecturaComplementoId = lecturaId,
-            //            Archivo = Path.GetFileName(rutaArchivo),
-            //            UUID = timbre?.Attribute("UUID")?.Value,
-            //            VerificacionSat = timbre?.Attribute("SelloSAT")?.Value,
-            //            Fecha = comprobante.Attribute("Fecha")?.Value?.Substring(0, 10),
-            //            Hora = comprobante.Attribute("Fecha")?.Value?.Substring(11),
-            //            FechaPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(0, 10),
-            //            HoraPago = pagoNodo?.Attribute("FechaPago")?.Value?.Substring(11),
-            //            Serie = comprobante.Attribute("Serie")?.Value,
-            //            Folio = comprobante.Attribute("Folio")?.Value,
-            //            RfcRecepetor = receptor?.Attribute("Rfc")?.Value,
-            //            NombreReceptor = receptor?.Attribute("Nombre")?.Value,
-            //            Moneda = comprobante.Attribute("Moneda")?.Value,
-            //            Monto = pagoNodo?.Attribute("Monto")?.Value,
-            //            FormaPago = pagoNodo?.Attribute("FormaDePagoP")?.Value,
-            //            UuidDctoRel = docto?.Attribute("IdDocumento")?.Value,
-            //            SerieRel = docto?.Attribute("Serie")?.Value,
-            //            FolioRel = docto?.Attribute("Folio")?.Value,
-            //            MonedaRel = docto?.Attribute("MonedaDR")?.Value,
-            //            NumeroParcialidad = docto?.Attribute("NumParcialidad")?.Value,
-            //            ImporteSaldoAnt = docto?.Attribute("ImpSaldoAnt")?.Value,
-            //            ImportePagado = docto?.Attribute("ImpPagado")?.Value,
-            //            ImporteSaldoInsoluto = docto?.Attribute("ImpSaldoInsoluto")?.Value,
-            //            MetodoPagoRel = docto?.Attribute("ObjetoImpDR")?.Value,
-            //            RfcEmisor = emisor?.Attribute("Rfc")?.Value,
-            //            NombreEmisor = emisor?.Attribute("Nombre")?.Value,
-            //            Complementos = complemento.ToString(),
-            //            Empresa = empresa,
-            //        });
-            //    }
-
-            //    return detalles;
-            //}
-
-        private async Task ProbarOperacionesFingerPrintsAsync()
-        {
-            using (var scope = _services.CreateScope())
-            {
-                var fingerDb = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
-
-                try
-                {
-                    var bitacora = await fingerDb.BITA.ToListAsync();
-                    _logger.LogInformation($"Retrieved {bitacora.Count} bitacora records");
-
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error con FingerPrintsContext");
-                }
-            }
-        }
-
-        private async Task ProbarOperacionesLabora()
-        {
-            using (var scope = _services.CreateScope())
-            {
-                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
-
-                try
-                {
-                    // Test if database can be connected to
-                    if (await laboraDb.Database.CanConnectAsync())
-                    {
-                        _logger.LogInformation("Successfully connected to database");
-
-                        var molochec = await laboraDb.molochec.ToListAsync();
-
-                        _logger.LogInformation($"Retrieved {molochec.Count} nmcoempl records");
-                    }
-                    else
-                    {
-                        _logger.LogError("Cannot connect to database");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error con LaboraContext");
-
-                    // Additional diagnostic info
-                    _logger.LogError($"Connection string: {laboraDb.Database.GetConnectionString()}");
-                }
-            }
-        }
-
-        private async Task InsertarNuevoChequeo()
-        {
-            using (var scope = _services.CreateScope())
-            {
-                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
-                try
-                {
-                    var nuevoChequeo = new LBCH
-                    {
-                        che_keylec = "1",
-                        che_keyemp = 1001,
-                        che_fecche = DateTime.Now.Date,
-                        che_horche = DateTime.Now.ToString("HH:mm:ss"),
-                        che_status = "A",
-                        che_tipche = "E",
-                        che_keyper = "2024-01"
-                    };
-
-                    laboraDb.molochec.Add(nuevoChequeo);
-                    await laboraDb.SaveChangesAsync();
-
-                    _logger.LogInformation($"Nuevo chequeo insertado con éxito. ID: {nuevoChequeo.che_keylec}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error al insertar nuevo chequeo");
-                }
-            }
-        }
-
-        private async Task ActualizarChequeo()
-        {
-            using (var scope = _services.CreateScope())
-            {
-                var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
-                try
-                {
-                    var chequeoExistente = await laboraDb.molochec
-                        .FirstOrDefaultAsync(c => c.che_keylec == "1");
-
-                    if (chequeoExistente != null)
-                    {
-                        chequeoExistente.che_status = "A";
-                        chequeoExistente.che_horche = DateTime.Now.ToString("HH:mm:ss");
-
-                        laboraDb.molochec.Update(chequeoExistente);
-                        await laboraDb.SaveChangesAsync();
-
-                        _logger.LogInformation($"Chequeo 1 actualizado con éxito");
-                    }
-                    else
-                    {
-                        _logger.LogWarning($"No se encontró el chequeo con key: 1");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error al actualizar chequeo");
-                }
             }
         }
 

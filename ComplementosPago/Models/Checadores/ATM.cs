@@ -11,5 +11,6 @@ namespace ModelContext.Models
         public int id { get; set; }
         public string dia { get; set; }
         public string hora { get; set; }
+        public int? ProcesoId { get; set; }
     }
 }
