@@ -59,6 +59,7 @@ namespace ComplementosPago
                     var ejecuciones = await db.ATMS
                         .Where(t => t.dia.ToLower() == dia && t.hora == horaMinuto)
                         .ToListAsync();
+                    
 
                     if (ejecuciones.Any())
                     {
@@ -96,6 +97,10 @@ namespace ComplementosPago
                             .OrderBy(p => p.Orden)
                             .ToList();
 
+                        var estatusProcesos = await db.ESTPR.ToListAsync();
+                        var bitacora = new BIT();
+                        var automatizacionLog = new LOAT();
+
 
                         var lectores = await db.FPRS.Where(e => e.fpr_sttfpr == 1).ToListAsync();
 
@@ -107,11 +112,41 @@ namespace ComplementosPago
                             {
                                 _logger.LogInformation("Procesando lector: {ip} - {numero}", lector.fpr_ipafpr, lector.fpr_numfpr);
                                 List<OCD> lstOcd = new List<OCD>();
+
                                 // Ejecutar procesos para este lector
                                 foreach (var proceso in procesosAEjecutar)
                                 {
                                     try
                                     {
+
+                                       var existeRegistro = await db.LOAT
+                                            .AnyAsync(x => x.procesoId == proceso.Id &&
+                                                           x.checadorId == lector.fpr_keyfpr &&
+                                                           x.fecha.Date == DateTime.Now.Date);
+
+                                        if (!existeRegistro)
+                                        {
+                                            automatizacionLog = new LOAT
+                                            {
+                                                id = 0,
+                                                procesoId = proceso.Id,
+                                                checadorId = lector.fpr_keyfpr,
+                                                fecha = DateTime.Now,
+                                                estadoId = estatusProcesos.FirstOrDefault(e => e.Nombre == "Creado").Id,
+                                                totalesPrevios = 0,
+                                                totalesPosterior = 0,
+                                                fechaRegistro = DateTime.Now
+                                            };
+
+                                            await db.LOAT.AddAsync(automatizacionLog);
+                                            await db.SaveChangesAsync();
+                                        }
+                                        else
+                                        {
+                                            _logger.LogInformation("El registro ya existe, no se creará duplicado");
+                                        }
+
+
                                         _logger.LogInformation("Ejecutando proceso: {nombre} (ID: {id}) para lector {ip}",
                                             proceso.Nombre, proceso.Id, lector.fpr_ipafpr);
 
@@ -120,13 +155,48 @@ namespace ComplementosPago
                                         if (!conexionExitosa)
                                         {
                                             _logger.LogWarning("No se pudo establecer conexión con el lector {ip} después de 3 intentos. Continuando con el siguiente lector.",
-                                                lector.fpr_ipafpr);
+                                                lector.fpr_namfpr);
+
+                                            bitacora = new BIT
+                                            {
+                                                id = 0,
+                                                procesoId = proceso.Id,
+                                                lectorId = lector.fpr_keyfpr,
+                                                descripcion = "Error de comunicación",
+                                                fechaEnvio = DateTime.Now
+                                            };
+
+                                            await db.BITA.AddAsync(bitacora);
+                                            await db.SaveChangesAsync();
+
                                             continue;
                                         }
 
                                         _logger.LogInformation("Conexión exitosa con el lector {ip}. Ejecutando procesos...",
-                                            lector.fpr_ipafpr);
+                                            lector.fpr_namfpr);
 
+                                        bitacora = new BIT
+                                        {
+                                            id = 0,
+                                            procesoId = proceso.Id,
+                                            lectorId = lector.fpr_keyfpr,
+                                            descripcion = "Inicio de proceso",
+                                            fechaEnvio = DateTime.Now
+                                        };
+
+                                        await db.BITA.AddAsync(bitacora);
+                                        await db.SaveChangesAsync();
+
+
+                                        var autoLog = await db.LOAT
+                                            .Where(x => x.procesoId == proceso.Id &&
+                                                           x.checadorId == lector.fpr_keyfpr &&
+                                                           x.fecha.Date == DateTime.Now.Date).FirstOrDefaultAsync();
+
+                                        autoLog.estadoId = estatusProcesos.FirstOrDefault(e => e.Nombre == "Iniciado").Id;
+
+                                        db.LOAT.Update(autoLog);
+                                        await db.SaveChangesAsync();
 
                                         bool resultado = false;
                                         
@@ -135,12 +205,15 @@ namespace ComplementosPago
                                         {
                                             case "RELE":
                                                 resultado = await _respaldoLectores.realizarRespaldoLector(lector, db);
+                                                resultado = true;
                                                 break;
                                             case "EXCH":
-                                                resultado = await _extraccionChecadas.realizarExtracciones(lector);
+                                                //resultado = await _extraccionChecadas.realizarExtracciones(lector);
+                                                resultado = true;
                                                 break;
                                             case "ENLA":
-                                                resultado = await _envioLabora.realizarEnvioLabora(lector, db); ;
+                                                //resultado = await _envioLabora.realizarEnvioLabora(lector, db);
+                                                resultado = true;
                                                 break;
                                             case "ELCH":
                                                 resultado = true;
