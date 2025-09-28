@@ -18,7 +18,8 @@ namespace ComplementosPago.Controllers
     {
         private readonly IServiceProvider _services;
         private readonly ILogger<RespaldoLectores> _logger;
-        private readonly libFprZkx _libFprZkx;
+        private readonly LectoresController _lectoresController;
+        //private readonly libFprZkx _libFprZkx;
 
         #region variables ping
         Ping pngFpr = new Ping();
@@ -27,21 +28,29 @@ namespace ComplementosPago.Controllers
         PingReply pngRpl = null;
         #endregion
 
+        int lectorId = 0;
+        int procesoId = 0;
+
 
         public RespaldoLectores(
             ILogger<RespaldoLectores> logger,
-            IServiceProvider services
+            IServiceProvider services,
+            LectoresController lectoresController
             )
         {
             _logger = logger;
             _services = services;
-            _libFprZkx = new libFprZkx();
+            _lectoresController = lectoresController;
+            //_libFprZkx = new libFprZkx();
         }
 
-        public async Task<bool> realizarRespaldoLector(FPR lector, FingerPrintsContext db)
+        public async Task<bool> realizarRespaldoLector(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx, int procesoId)
         {
             try
             {
+                this.lectorId = lector.fpr_keyfpr;
+                this.procesoId = procesoId;
+
                 _logger.LogInformation("Extrayendo información del lector {nombre}", lector.fpr_namfpr);
 
                 #region variables de salida
@@ -49,68 +58,86 @@ namespace ComplementosPago.Controllers
                 int fpr_fpafpr, fpr_fcafpr, fpr_usrfpr, fpr_admfpr, fpr_pwdfpr, fpr_oplfpr, fpr_attfpr, fpr_facfpr, fpr_fpnfpr;
                 #endregion
 
-                int result = _libFprZkx.zktInfo(lector.fpr_numfpr, true, out fpr_macfpr, out fpr_frmfpr, out fpr_cdgfpr,
+                int result = 0;
+
+                if (_libFprZkx.zktConx(lector.fpr_ipafpr, lector.fpr_numfpr))
+                {
+                    result = _libFprZkx.zktInfo(lector.fpr_numfpr, true, out fpr_macfpr, out fpr_frmfpr, out fpr_cdgfpr,
                     out fpr_plffpr, out fpr_srnfpr, out fpr_sdkfpr, out fpr_thrfpr, out fpr_fpafpr,
                     out fpr_fcafpr, out fpr_usrfpr, out fpr_admfpr, out fpr_pwdfpr, out fpr_oplfpr,
                     out fpr_attfpr, out fpr_facfpr, out fpr_fpnfpr);
+                
+                    
+                
 
-                if (result == 0)
-                {
-                    _logger.LogError("Error al extraer información del lector {nombre}. Código error: {result}",
-                        lector.fpr_namfpr, result);
-                    return false;
-                }
+                
 
-                var lectorActualizado = await db.FPRS
-                    .Where(x => x.fpr_keyfpr == lector.fpr_keyfpr)
-                    .FirstOrDefaultAsync();
+                    if (result == 0)
+                    {
+                        _logger.LogError("Error al extraer información del lector {nombre}. Código error: {result}",
+                            lector.fpr_namfpr, result);
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Error al extraer información del lector {lector.fpr_namfpr}. Código error: {result}");
+                        return false;
+                    }
 
-                if (lectorActualizado != null)
-                {
-                    lectorActualizado.fpr_macfpr = fpr_macfpr;
-                    lectorActualizado.fpr_frmfpr = fpr_frmfpr;
-                    lectorActualizado.fpr_cdgfpr = fpr_cdgfpr;
-                    lectorActualizado.fpr_plffpr = fpr_plffpr;
-                    lectorActualizado.fpr_srnfpr = fpr_srnfpr;
-                    lectorActualizado.fpr_sdkfpr = fpr_sdkfpr;
-                    lectorActualizado.fpr_thrfpr = fpr_thrfpr;
-                    lectorActualizado.fpr_fpafpr = fpr_fpafpr;
-                    lectorActualizado.fpr_fcafpr = fpr_fcafpr;
-                    lectorActualizado.fpr_usrfpr = fpr_usrfpr;
-                    lectorActualizado.fpr_admfpr = fpr_admfpr;
-                    lectorActualizado.fpr_pwdfpr = fpr_pwdfpr;
-                    lectorActualizado.fpr_oplfpr = fpr_oplfpr;
-                    lectorActualizado.fpr_attfpr = fpr_attfpr;
-                    lectorActualizado.fpr_facfpr = fpr_facfpr;
-                    lectorActualizado.fpr_fpnfpr = fpr_fpnfpr;
-                    lectorActualizado.fpr_typfpr = fpr_fpafpr == 9 ? 1 : 2;
+                    var lectorActualizado = await db.FPRS
+                        .Where(x => x.fpr_keyfpr == lector.fpr_keyfpr)
+                        .FirstOrDefaultAsync();
 
-                    db.FPRS.Update(lectorActualizado);
-                    await db.SaveChangesAsync();
+                    if (lectorActualizado != null)
+                    {
+                        lectorActualizado.fpr_macfpr = fpr_macfpr;
+                        lectorActualizado.fpr_frmfpr = fpr_frmfpr;
+                        lectorActualizado.fpr_cdgfpr = fpr_cdgfpr;
+                        lectorActualizado.fpr_plffpr = fpr_plffpr;
+                        lectorActualizado.fpr_srnfpr = fpr_srnfpr;
+                        lectorActualizado.fpr_sdkfpr = fpr_sdkfpr;
+                        lectorActualizado.fpr_thrfpr = fpr_thrfpr;
+                        lectorActualizado.fpr_fpafpr = fpr_fpafpr;
+                        lectorActualizado.fpr_fcafpr = fpr_fcafpr;
+                        lectorActualizado.fpr_usrfpr = fpr_usrfpr;
+                        lectorActualizado.fpr_admfpr = fpr_admfpr;
+                        lectorActualizado.fpr_pwdfpr = fpr_pwdfpr;
+                        lectorActualizado.fpr_oplfpr = fpr_oplfpr;
+                        lectorActualizado.fpr_attfpr = fpr_attfpr;
+                        lectorActualizado.fpr_facfpr = fpr_facfpr;
+                        lectorActualizado.fpr_fpnfpr = fpr_fpnfpr;
+                        lectorActualizado.fpr_typfpr = fpr_fpafpr == 9 ? 1 : 2;
 
-                    _logger.LogInformation("Información del lector {nombre} actualizada correctamente",
-                        lector.fpr_namfpr);
+                        db.FPRS.Update(lectorActualizado);
+                        await db.SaveChangesAsync();
 
-                    await realizarRespaldoHuellas(lector, db);
+                        _logger.LogInformation("Información del lector {nombre} actualizada correctamente",
+                            lector.fpr_namfpr);
 
-                    return true;
+                        await realizarRespaldoHuellas(lector, db, _libFprZkx);
+
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No se encontró el lector {nombre} en la base de datos para actualizar",
+                            lector.fpr_namfpr);
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"No se encontró el lector {lector.fpr_namfpr} en la base de datos para actualizar");
+                        return false;
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("No se encontró el lector {nombre} en la base de datos para actualizar",
-                        lector.fpr_namfpr);
                     return false;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al procesar la información del lector {nombre}", lector.fpr_namfpr);
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Error al procesar la información del lector {lector.fpr_namfpr}");
+
                 return false;
             }
         }
 
 
-        private async Task<bool> realizarRespaldoHuellas(FPR lector, FingerPrintsContext db)
+        private async Task<bool> realizarRespaldoHuellas(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx)
         {
             try
             {
@@ -122,11 +149,10 @@ namespace ComplementosPago.Controllers
                 opr.opr_datopr = DateTime.Now;
                 opr.opr_horopr = new TimeSpan(DateTime.Now.Hour, DateTime.Now.Minute, DateTime.Now.Second);
                 opr.opr_timopr = 0;
-                opr.usu_keyusu = 4;
+                opr.usu_keyusu = 1;
                 opr.opr_staopr = 0;
-                db.OPRS.Add(opr);
-                db.SaveChanges();
-                db.Entry(opr).GetDatabaseValues();
+                await db.OPRS.AddAsync(opr);
+                await db.SaveChangesAsync();
 
                 int odt_linodt = 0;
                 var insFprs = new ODT
@@ -148,7 +174,7 @@ namespace ComplementosPago.Controllers
                 await db.ODTS.AddAsync(insFprs);
                 await db.SaveChangesAsync();
 
-                var proceso = await procesoDeRespaldo(lector, db, opr.opr_keyopr);
+                var proceso = await procesoDeRespaldo(lector, db, opr.opr_keyopr, _libFprZkx);
 
                 if (proceso)
                 {
@@ -165,11 +191,13 @@ namespace ComplementosPago.Controllers
             catch (Exception ex)
             {
                 _logger.LogError("Ocurrio el siguiente error al inciar el proceso del respaldo: \n" + ex.ToString());
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Ocurrio el siguiente error al inciar el proceso del respaldo: {ex.ToString()}");
+
                 return false;
             }
         }
 
-        private async Task<bool> procesoDeRespaldo(FPR lector, FingerPrintsContext db, int oprKey)
+        private async Task<bool> procesoDeRespaldo(FPR lector, FingerPrintsContext db, int oprKey, libFprZkx _libFprZkx)
         {
             try
             {
@@ -177,16 +205,19 @@ namespace ComplementosPago.Controllers
                 OPR entPrc;
                 List<ODT> lstOdt;
 
-                entPrc = db.OPRS.AsNoTracking().FirstOrDefault(x => x.opr_keyopr == oprKey);
-                lstOdt = db.ODTS.AsNoTracking()
+                entPrc = await db.OPRS.FirstOrDefaultAsync(x => x.opr_keyopr == oprKey);
+                lstOdt = await db.ODTS
                     .Where(x => x.opr_keyopr == oprKey)
                     .OrderBy(x => x.fpr_numfpr)
-                    .ToList();
+                    .ToListAsync();
 
                 ODT odtPrc = lstOdt.FirstOrDefault(x => x.fpr_keyfpr == lector.fpr_keyfpr);
 
-                var tarea = Task.Run(() => EjecutarRespaldoAsync(lector, entPrc, odtPrc, db));
-                bool completada = tarea.Wait(TimeSpan.FromMinutes(3));
+
+                //var tarea = await EjecutarRespaldoAsync(lector, entPrc, odtPrc, db, _libFprZkx);
+                //bool completada =  tarea;
+                var tarea = Task.Run(() => EjecutarRespaldoAsync(lector, entPrc, odtPrc, db, _libFprZkx));
+                bool completada = tarea.Wait(TimeSpan.FromMinutes(10));
 
                 if (completada)
                 {
@@ -201,12 +232,14 @@ namespace ComplementosPago.Controllers
             catch (Exception ex)
             {
                 _logger.LogError("Ocurrio el siguiente error al inciar el proceso del respaldo: \n" + ex.ToString());
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Ocurrio el siguiente error al inciar el proceso del respaldo: {ex.ToString()}");
+
                 return false;
             }
 
         }
 
-        private async Task EjecutarRespaldoAsync(FPR ent, OPR entPrc, ODT odtPrc, FingerPrintsContext db)
+        private async Task EjecutarRespaldoAsync(FPR ent, OPR entPrc, ODT odtPrc, FingerPrintsContext db, libFprZkx _libFprZkx)
         {
             try
             {
@@ -240,24 +273,30 @@ namespace ComplementosPago.Controllers
                         {
                             var buscando = lstBck.Where(x => x.stf_numstf == "4580").ToList();
                             _logger.LogInformation($"[{DateTime.Now}] Insertando respaldo en base de datos...");
-                            insBckp(entPrc, odtPrc, lstBck, db);
+                            await insBckp(entPrc, odtPrc, lstBck, db);
                             prcSave(db, odtPrc, ent, 1, "Respaldo Realizado con el Lector ");
                         }
                         else
                         {
                             _logger.LogWarning($"[{DateTime.Now}] No se encontraron huellas.");
+                            await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Sin Huellas en el Lector");
+
                             prcSave(db, odtPrc, ent, 4, "Sin Huellas en el Lector ");
                         }
                     }
                     else
                     {
                         _logger.LogError($"[{DateTime.Now}] Falló la conexión con el lector.");
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Conexión Fallida con el Lector");
+
                         prcSave(db, odtPrc, ent, 2, "Conexión Fallida con el Lector ");
                     }
                 }
                 else
                 {
                     _logger.LogError($"[{DateTime.Now}] Ping fallido o tiempo excedido.");
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Ping Fallido con el Lector");
+
                     prcSave(db, odtPrc, ent, 3, "Ping Fallido con el Lector ");
                 }
 
@@ -294,43 +333,60 @@ namespace ComplementosPago.Controllers
             }
         }
 
-        private void insBckp(OPR prcPrcs, ODT prcPdtl, List<OBK> lstBcks, FingerPrintsContext dbc)
+        private async Task insBckp(OPR prcPrcs, ODT prcPdtl, List<OBK> lstBcks, FingerPrintsContext db)
         {
-
-                dbc.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
-
+           
                 try
                 {
-                    // Cargar datos requeridos
-                    var odtKey = prcPdtl.odt_keyodt;
-                    var fprKey = lstBcks.FirstOrDefault()?.fpr_keyfpr ?? 0;
-                    var infFprs = dbc.OBAK.AsNoTracking().Where(x => x.odt_keyodt == odtKey).ToList();
-                    var infStfs = dbc.STFS.ToList();
-
-                    // Eliminar huellas existentes del mismo lector
-                    var huellasRegistradas = dbc.OBAK.AsNoTracking().Where(f => f.fpr_keyfpr == fprKey).ToList();
-                    dbc.OBAK.RemoveRange(huellasRegistradas);
-
-                    dbc.SaveChanges();
-
-                    
-
-                    foreach (var hu in lstBcks)
+                    using (var scope = _services.CreateScope())
                     {
-                        var stfkey = dbc.STFS.AsNoTracking().Where(x => x.stf_numstf == hu.stf_numstf);
+                        var dbc = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+                        // Cargar datos requeridos
+                        var odtKey = prcPdtl.odt_keyodt;
+                        var fprKey = lstBcks.FirstOrDefault()?.fpr_keyfpr ?? 0;
 
-                        if (stfkey.Any())
+                        // Eliminar huellas existentes del mismo lector
+                        var huellasRegistradas = await dbc.OBAK.Where(f => f.fpr_keyfpr == fprKey).ToListAsync();
+
+                        var registroLoat = await db.LOAT
+                                .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                                      x.checadorId == this.lectorId &&
+                                                      x.fecha.Date == DateTime.Now.Date);
+
+
+                        dbc.OBAK.RemoveRange(huellasRegistradas);
+
+                        dbc.SaveChanges();
+
+
+                        foreach (var hu in lstBcks)
                         {
-                            hu.stf_keystf = stfkey.FirstOrDefault().stf_keystf;
+                            var stf = dbc.STFS
+                                .AsNoTracking()
+                                .FirstOrDefault(x => x.stf_numstf == hu.stf_numstf);
+
+                            if (stf != null)
+                            {
+                                hu.stf_keystf = stf.stf_keystf;
+                            }
                         }
+
+                    if (registroLoat != null)
+                    {
+                        registroLoat.totalesPrevios = huellasRegistradas.Count();
+                        registroLoat.totalesPosterior = lstBcks.Count();
+
+                        dbc.LOAT.Update(registroLoat);
                     }
 
-                    dbc.OBAK.AddRange(lstBcks);
+                    await dbc.OBAK.AddRangeAsync(lstBcks);
 
-                    // Guardar TODO de una sola vez
-                    dbc.SaveChanges();
+                        // Guardar TODO de una sola vez
+                        await dbc.SaveChangesAsync();
 
-                    updPrcs(prcPrcs, prcPdtl, dbc);
+                        await updPrcs(prcPrcs, prcPdtl, dbc);
+                    }
+                
                 }
                 catch (Exception ex)
                 {
@@ -339,13 +395,13 @@ namespace ComplementosPago.Controllers
             
         }
 
-        private void updPrcs(OPR prcPrcs, ODT prcPdtl, FingerPrintsContext dbc)
+        private async Task updPrcs(OPR prcPrcs, ODT prcPdtl, FingerPrintsContext dbc)
         {
 
             try
             {
                 dbc.ODTS.Update(prcPdtl);
-                dbc.SaveChanges();
+                await dbc.SaveChangesAsync();
 
                 var cont = dbc.ODTS.AsNoTracking().Where(x => x.opr_keyopr == prcPrcs.opr_keyopr && x.odt_staodt != 0).Count();
 

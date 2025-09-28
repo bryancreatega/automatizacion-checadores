@@ -15,17 +15,25 @@ namespace ComplementosPago.Controllers
         private readonly libFprZkx _libFprZkx;
         private readonly IConfiguration _configuration;
         private readonly funFprGra _funFprGra;
+        private readonly LectoresController _lectoresController;
 
         List<FPR> lstFpr = new List<FPR>();
         List<OCH> lstOch = new List<OCH>();
         List<OCH> lstChc = new List<OCH>();
         List<OCH> lstCht = new List<OCH>();
+        List<LBCH> lstChe = new List<LBCH>(); 
+        List<OCD> lstChd = new List<OCD>();
+
+        int lectorId = 0;
+        int procesoId = 0;
+        private DateTime _fechaProceso;    
 
         public EnvioLabora(
             ILogger<EnvioLabora> logger,
             IServiceProvider services,
             IConfiguration configuration,
-            funFprGra funFprGra
+            funFprGra funFprGra,
+            LectoresController lectoresController
             )
         {
             _logger = logger;
@@ -33,13 +41,22 @@ namespace ComplementosPago.Controllers
             _libFprZkx = new libFprZkx();
             _configuration = configuration;
             _funFprGra = funFprGra;
+            _lectoresController = lectoresController;
+            _fechaProceso = DateTime.Now.Date;
         }
 
-        public async Task<bool> realizarEnvioLabora(FPR lector, FingerPrintsContext db)
+        public async Task<bool> realizarEnvioLabora(FPR lector, FingerPrintsContext db, int procesoId)
         {
+            this.lectorId = lector.fpr_keyfpr;
+            this.procesoId = procesoId;
             try
             {
                 _logger.LogInformation("Enviando información del lector {nombre} a labora", lector.fpr_namfpr);
+
+                var registroLoat = await db.LOAT
+                               .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                                     x.checadorId == this.lectorId &&
+                                                     x.fecha.Date == DateTime.Now.Date);
 
                 DataTable datLab = null;
                 string prd_nomprd = string.Empty;
@@ -76,7 +93,7 @@ namespace ComplementosPago.Controllers
 
                 if (lstOcd.Count() > 0)
                 {
-                    var lstChd = lstOcd.Select(x => { x.per_keyper = prd_nomprd; return x; }).ToList();
+                    lstChd = lstOcd.Select(x => { x.per_keyper = prd_nomprd; return x; }).ToList();
                     db.OCHD.UpdateRange(lstChd);
                     db.SaveChanges();
                     lstMolc = lstChd;
@@ -109,7 +126,7 @@ namespace ComplementosPago.Controllers
                     var lstChl = mcl.Where(x => x.che_status == "0").ToList();
 
                     string tst = string.Empty;
-                    var lstChe = (from tbl1 in lstChl//lstCht
+                    lstChe = (from tbl1 in lstChl//lstCht
                                   select new LBCH
                                   {
                                       che_keylec = tbl1.che_keylec,
@@ -132,6 +149,7 @@ namespace ComplementosPago.Controllers
                     {
                         _logger.LogWarning("No hay información del lector {ip} para enviar a labora",
                         lector.fpr_namfpr);
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"No hay información del lector para enviar a labora");
                         return true;
                     }
 
@@ -142,17 +160,27 @@ namespace ComplementosPago.Controllers
 
                 if (funFprGra.graInsb(datLab, "molochec"))
                 {
-                   
+                    int totalPosterior = lstChe.Count();
+
                     var lstOCHD = lstMolc.Select(x => { x.ocd_staocd = 1; x.per_keyper = prd_nomprd; return x; }).ToList();
                     db.OCHD.UpdateRange(lstOCHD);
                     //db.OCHD.UpdateRange(lstMolc);
                     db.SaveChanges();
-                    
+
+                    if (registroLoat != null)
+                    {
+                        registroLoat.totalesPosterior = totalPosterior;
+                        registroLoat.totalesPrevios = lstChd.Count();
+                        db.LOAT.Update(registroLoat);
+                        db.SaveChanges(); 
+                    }
+
                     lstCht = new List<OCH>();
                 }
                 else
                 {
                     _logger.LogError("La exportación a Labora a fallado");
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"La exportación a Labora a fallado");
                     return false;
                 }
 
@@ -166,6 +194,7 @@ namespace ComplementosPago.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al procesar la información del lector {nombre}", lector.fpr_namfpr);
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Error al procesar la información del lector: {lector.fpr_namfpr}");
                 return false;
             }
         }

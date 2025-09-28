@@ -204,16 +204,13 @@ namespace ComplementosPago
                                         switch (proceso.Nombre)
                                         {
                                             case "RELE":
-                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db);
-                                                resultado = true;
+                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
                                                 break;
                                             case "EXCH":
-                                                //resultado = await _extraccionChecadas.realizarExtracciones(lector);
-                                                resultado = true;
+                                                resultado = await _extraccionChecadas.realizarExtracciones(lector, proceso.Id);
                                                 break;
                                             case "ENLA":
-                                                //resultado = await _envioLabora.realizarEnvioLabora(lector, db);
-                                                resultado = true;
+                                                resultado = await _envioLabora.realizarEnvioLabora(lector, db, proceso.Id);
                                                 break;
                                             case "ELCH":
                                                 resultado = true;
@@ -246,6 +243,21 @@ namespace ComplementosPago
                                         {
                                             _logger.LogInformation("Proceso {nombre} (Orden: {orden}) ejecutado correctamente para el lector {ip}",
                                                 proceso.Nombre, proceso.Orden, lector.fpr_namfpr);
+                                            await _lectoresController.RegistrarErrorBitacora(proceso.Id, lector.fpr_keyfpr, $"Proceso {proceso.Nombre} (Orden: {proceso.Orden}) ejecutado correctamente para el lector");
+
+                                            var registroLoat = await db.LOAT
+                                                .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                    x.checadorId == lector.fpr_keyfpr &&
+                                                    x.fecha.Date == DateTime.Now.Date);
+
+                                            if (registroLoat != null)
+                                            {
+                                                registroLoat.estadoId = estatusProcesos.FirstOrDefault(e => e.Nombre == "Terminado").Id;
+
+                                                db.LOAT.Update(registroLoat);
+                                                await db.SaveChangesAsync();
+                                            }
+
                                         }
                                     }
                                     catch (Exception ex)

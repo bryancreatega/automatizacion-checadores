@@ -15,6 +15,7 @@ namespace ComplementosPago.Controllers
         private readonly IServiceProvider _services;
         private readonly ILogger<ExtraccionChecadas> _logger;
         private readonly libFprZkx _libFprZkx;
+        private readonly LectoresController _lectoresController;
 
         #region variables ping
         Ping pngFpr = new Ping();
@@ -31,18 +32,26 @@ namespace ComplementosPago.Controllers
         List<OCD> lstOcd = new List<OCD>();
         List<OCD> filteredZerolstOcd = new List<OCD>();
 
+        int lectorId = 0;
+        int procesoId = 0;
+
         public ExtraccionChecadas(
             ILogger<ExtraccionChecadas> logger,
-            IServiceProvider services
+            IServiceProvider services,
+            LectoresController lectoresController
             )
         {
             _logger = logger;
             _services = services;
             _libFprZkx = new libFprZkx();
+            _lectoresController = lectoresController;
         }
 
-        public async Task<bool> realizarExtracciones(FPR lector)
+        public async Task<bool> realizarExtracciones(FPR lector, int procesoId)
         {
+            this.lectorId = lector.fpr_keyfpr;
+            this.procesoId = procesoId;
+
             using (var scope = _services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
@@ -127,6 +136,8 @@ namespace ComplementosPago.Controllers
                         opr.opr_staopr = 2;
 
                         _logger.LogWarning("Extracción falló para lector: {nombre}", lector.fpr_namfpr);
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, "Extracción falló para lector");
+
                     }
 
                     await db.SaveChangesAsync();
@@ -136,6 +147,7 @@ namespace ComplementosPago.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error en InformacionPorLector para lector: {nombre}", lector.fpr_namfpr);
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Error en InformacionPorLector para lector: {ex.Message}");
                     return false;
                 }
             }
@@ -219,10 +231,12 @@ namespace ComplementosPago.Controllers
                     try
                     {
                         _logger.LogError("Ocurrio el siguiente error: " + ex.Message + "; Lector: " + lector.fpr_numfpr.ToString(), "bckError");
+                        _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Ocurrio el siguiente error: {ex.Message}");
                     }
                     catch (Exception exf)
                     {
                         _logger.LogError("Aplicacion", "Ocurrio el siguiente error " + exf.Message);
+                        _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Ocurrio el siguiente error: {exf.Message}");
                     }
                 }
             });
@@ -257,7 +271,12 @@ namespace ComplementosPago.Controllers
 
                 #region lista a instertar huellas del respaldo
                 DateTime dttVali = DateTime.Now;
-                var lstMark = db.OCHE.AsNoTracking().Where(x => x.fpr_keyfpr == lector.fpr_keyfpr).ToList();
+                var lstMark = db.OCHE.AsNoTracking().Where(x => x.fpr_keyfpr == lector.fpr_keyfpr && x.och_dtpoch == dttVali.Date).ToList();
+
+                var registroLoat = await db.LOAT
+                                .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                                      x.checadorId == this.lectorId &&
+                                                      x.fecha.Date == DateTime.Now.Date);
                 // x.och_datoch.Year == dttVali.Year && 
                 // && x.och_datoch.Month == dttVali.Month && x.och_datoch.Day == dttVali.Day
                 try
@@ -303,6 +322,14 @@ namespace ComplementosPago.Controllers
                     lstCht.AddRange(lstChc);
                     db.OCHE.UpdateRange(lstChc.ToList());//insOchk.Where(x => x.och_keyoch == 0).ToList());//(lstOch);//ctx.OBAK.AddRange(insObak);//Where(x => x.och_keyoch == 0).//Go062019.
                     db.SaveChanges();
+
+                    if (registroLoat != null)
+                    {
+                        registroLoat.totalesPrevios = lstMark.Count();
+                        registroLoat.totalesPosterior = lstChc.Count();
+
+                        db.LOAT.Update(registroLoat);
+                    }
 
                     #region llenado de OCHD
                     var nuevosOch = db.OCHE.AsQueryable().Where(x => x.fpr_keyfpr == lector.fpr_keyfpr).ToList();
@@ -372,6 +399,7 @@ namespace ComplementosPago.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogError("Error al guardar las checadas ");
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"Error al guardar las checadas");
                     return false;
                 }
                 
@@ -382,6 +410,7 @@ namespace ComplementosPago.Controllers
             else
             {
                 _logger.LogError("El Lector no responde ");
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId, $"El Lector no responde");
                 return false;
             }
            
