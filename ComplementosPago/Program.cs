@@ -1,5 +1,6 @@
 ﻿using ComplementosPago;
 using ComplementosPago.Controllers;
+using ComplementosPago.Services;
 using Encrypt;
 using Functions;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<RespaldoLectores>();
 builder.Services.AddSingleton<ExtraccionChecadas>();
 builder.Services.AddSingleton<EnvioLabora>();
 builder.Services.AddSingleton<funFprGra>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 
 var host = builder.Build();

@@ -110,8 +110,6 @@ namespace ComplementosPago.Controllers
                         _logger.LogInformation("Información del lector {nombre} actualizada correctamente",
                             lector.fpr_namfpr);
 
-                        await realizarRespaldoHuellas(lector, db, _libFprZkx);
-
                         return true;
                     }
                     else
@@ -137,7 +135,7 @@ namespace ComplementosPago.Controllers
         }
 
 
-        private async Task<bool> realizarRespaldoHuellas(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx)
+        public async Task<bool> realizarRespaldoHuellas(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx, int procesoId)
         {
             try
             {

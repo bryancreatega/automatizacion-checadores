@@ -89,7 +89,11 @@ namespace ComplementosPago.Controllers
                 List<OCD> lstMolc = new List<OCD>();
                 List<OCD> lstOcd = new List<OCD>();
 
+                
+
                 lstOcd = await db.OCHD.Where(e => e.fpr_numfpr == lector.fpr_numfpr).ToListAsync();
+
+                var totalPrev = lstOcd.Where(e => e.per_keyper == prd_nomprd && e.ocd_staocd == 1);
 
                 if (lstOcd.Count() > 0)
                 {
@@ -169,8 +173,9 @@ namespace ComplementosPago.Controllers
 
                     if (registroLoat != null)
                     {
+                        registroLoat.totalesPrevios = totalPrev.Count();
                         registroLoat.totalesPosterior = totalPosterior;
-                        registroLoat.totalesPrevios = lstChd.Count();
+                        
                         db.LOAT.Update(registroLoat);
                         db.SaveChanges(); 
                     }

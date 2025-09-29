@@ -1,5 +1,6 @@
-using ComplementosPago.Controllers;
+Ôªøusing ComplementosPago.Controllers;
 using ComplementosPago.Models;
+using ComplementosPago.Services;
 using ComplementosPago.ViewModels;
 using Library;
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +56,7 @@ namespace ComplementosPago
                 using (var scope = _services.CreateScope())
                 {
                     var db = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+                    var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
                     var ejecuciones = await db.ATMS
                         .Where(t => t.dia.ToLower() == dia && t.hora == horaMinuto)
@@ -66,6 +68,7 @@ namespace ComplementosPago
                         _logger.LogInformation("Ejecutando tarea programada para {dia} a las {hora}", dia, horaMinuto);
 
                         var procesosAEjecutar = new List<PRO>();
+                        var todosLosResumenes = new List<ResumenProceso>();
 
                         foreach (var ejecucion in ejecuciones)
                         {
@@ -92,6 +95,7 @@ namespace ComplementosPago
                         }
 
                         procesosAEjecutar = procesosAEjecutar
+
                             .GroupBy(p => p.Id)
                             .Select(g => g.First())
                             .OrderBy(p => p.Orden)
@@ -113,13 +117,13 @@ namespace ComplementosPago
                                 _logger.LogInformation("Procesando lector: {ip} - {numero}", lector.fpr_ipafpr, lector.fpr_numfpr);
                                 List<OCD> lstOcd = new List<OCD>();
 
-                                // Ejecutar procesos para este lector
-                                foreach (var proceso in procesosAEjecutar)
+                                var resumenesLector = new List<ResumenProceso>();
+
+                                foreach( var proceso in procesosAEjecutar)
                                 {
                                     try
                                     {
-
-                                       var existeRegistro = await db.LOAT
+                                        var existeRegistro = await db.LOAT
                                             .AnyAsync(x => x.procesoId == proceso.Id &&
                                                            x.checadorId == lector.fpr_keyfpr &&
                                                            x.fecha.Date == DateTime.Now.Date);
@@ -143,9 +147,20 @@ namespace ComplementosPago
                                         }
                                         else
                                         {
-                                            _logger.LogInformation("El registro ya existe, no se crear· duplicado");
+                                            _logger.LogInformation("El registro ya existe, no se crear√° duplicado");
                                         }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogInformation("Error al crear registro en LOAT");
+                                    }
+                                }
 
+                                // Ejecutar procesos para este lector
+                                foreach (var proceso in procesosAEjecutar)
+                                {
+                                    try
+                                    {
 
                                         _logger.LogInformation("Ejecutando proceso: {nombre} (ID: {id}) para lector {ip}",
                                             proceso.Nombre, proceso.Id, lector.fpr_ipafpr);
@@ -154,7 +169,7 @@ namespace ComplementosPago
 
                                         if (!conexionExitosa)
                                         {
-                                            _logger.LogWarning("No se pudo establecer conexiÛn con el lector {ip} despuÈs de 3 intentos. Continuando con el siguiente lector.",
+                                            _logger.LogWarning("No se pudo establecer conexi√≥n con el lector {ip} despu√©s de 3 intentos. Continuando con el siguiente lector.",
                                                 lector.fpr_namfpr);
 
                                             bitacora = new BIT
@@ -162,7 +177,7 @@ namespace ComplementosPago
                                                 id = 0,
                                                 procesoId = proceso.Id,
                                                 lectorId = lector.fpr_keyfpr,
-                                                descripcion = "Error de comunicaciÛn",
+                                                descripcion = "Error de comunicaci√≥n",
                                                 fechaEnvio = DateTime.Now
                                             };
 
@@ -172,7 +187,7 @@ namespace ComplementosPago
                                             continue;
                                         }
 
-                                        _logger.LogInformation("ConexiÛn exitosa con el lector {ip}. Ejecutando procesos...",
+                                        _logger.LogInformation("Conexi√≥n exitosa con el lector {ip}. Ejecutando procesos...",
                                             lector.fpr_namfpr);
 
                                         bitacora = new BIT
@@ -203,14 +218,21 @@ namespace ComplementosPago
 
                                         switch (proceso.Nombre)
                                         {
+                                            case "EXDI":
+                                                //resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
+                                                resultado = true;
+                                                break;
                                             case "RELE":
-                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
+                                                //resultado = await _respaldoLectores.realizarRespaldoHuellas(lector, db , _libFprZkx, proceso.Id);
+                                                resultado = true;
                                                 break;
                                             case "EXCH":
-                                                resultado = await _extraccionChecadas.realizarExtracciones(lector, proceso.Id);
+                                                //resultado = await _extraccionChecadas.realizarExtracciones(lector, proceso.Id);
+                                                resultado = false;
                                                 break;
                                             case "ENLA":
-                                                resultado = await _envioLabora.realizarEnvioLabora(lector, db, proceso.Id);
+                                                //resultado = await _envioLabora.realizarEnvioLabora(lector, db, proceso.Id);
+                                                resultado = true;
                                                 break;
                                             case "ELCH":
                                                 resultado = true;
@@ -223,7 +245,15 @@ namespace ComplementosPago
 
                                         if (!resultado)
                                         {
-                                            _logger.LogError("El proceso {nombre} (Orden: {orden}) fallÛ para el lector {nombre}.",
+                                            var bitacoraError = await db.BITA
+                                                .Where(x => x.procesoId == proceso.Id &&
+                                                       x.lectorId == lector.fpr_keyfpr &&
+                                                       x.fechaEnvio.Date == DateTime.Now.Date)
+                                                .OrderBy(x => x.fechaEnvio) 
+                                                .LastOrDefaultAsync(); 
+
+
+                                            _logger.LogError("El proceso {nombre} (Orden: {orden}) fall√≥ para el lector {nombre}.",
                                                 proceso.Nombre, proceso.Orden, lector.fpr_namfpr);
 
                                             var procesosPendientes = procesosAEjecutar
@@ -233,8 +263,28 @@ namespace ComplementosPago
 
                                             if (procesosPendientes.Any())
                                             {
-                                                _logger.LogWarning("Procesos que no se ejecutar·n para el lector {ip}: {procesosPendientes}",
+                                                _logger.LogWarning("Procesos que no se ejecutar√°n para el lector {ip}: {procesosPendientes}",
                                                     lector.fpr_namfpr, string.Join(", ", procesosPendientes));
+                                            }
+
+                                            var registroLoatError = await db.LOAT
+                                               .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                   x.checadorId == lector.fpr_keyfpr &&
+                                                   x.fecha.Date == DateTime.Now.Date);
+
+                                            if (registroLoatError != null)
+                                            {
+                                                string descripcionError = bitacoraError?.descripcion ?? $"El proceso {proceso.Nombre} (Orden: {proceso.Orden}) fall√≥ para el lector {lector.fpr_namfpr}.";
+
+                                                resumenesLector.Add(new ResumenProceso
+                                                {
+                                                    LectorId = lector.fpr_keyfpr,
+                                                    Lector = lector,
+                                                    ProcesoId = proceso.Id,
+                                                    EstadoId = registroLoatError.estadoId,
+                                                    Fecha = registroLoatError.fecha,
+                                                    Error = descripcionError
+                                                });
                                             }
 
                                             break;
@@ -258,7 +308,26 @@ namespace ComplementosPago
                                                 await db.SaveChangesAsync();
                                             }
 
+                                            var registroLoatGet = await db.LOAT
+                                                .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                    x.checadorId == lector.fpr_keyfpr &&
+                                                    x.fecha.Date == DateTime.Now.Date);
+
+                                            if (registroLoatGet != null)
+                                            {
+                                                resumenesLector.Add(new ResumenProceso
+                                                {
+                                                    LectorId = lector.fpr_keyfpr,
+                                                    Lector = lector,
+                                                    ProcesoId = proceso.Id,
+                                                    EstadoId = registroLoatGet.estadoId,
+                                                    Fecha = registroLoatGet.fecha
+                                                });
+                                            }
+
                                         }
+
+                                        
                                     }
                                     catch (Exception ex)
                                     {
@@ -272,6 +341,26 @@ namespace ComplementosPago
                                         }
                                     }
                                 }
+
+                                todosLosResumenes.AddRange(resumenesLector);
+
+                            }
+
+                            if (todosLosResumenes.Any())
+                            {
+                                try
+                                {
+                                    await emailService.EnviarResumenGeneralProcesos(todosLosResumenes, procesosAEjecutar, estatusProcesos);
+                                    _logger.LogInformation("Correo de resumen general enviado exitosamente para {cantidad} lectores", lectores.Count);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Error al enviar correo de resumen general");
+                                }
+                            }
+                            else
+                            {
+                                _logger.LogInformation("No hay res√∫menes para enviar por correo");
                             }
                         }
                         else
