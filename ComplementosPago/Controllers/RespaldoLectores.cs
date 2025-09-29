@@ -66,11 +66,11 @@ namespace ComplementosPago.Controllers
                     out fpr_plffpr, out fpr_srnfpr, out fpr_sdkfpr, out fpr_thrfpr, out fpr_fpafpr,
                     out fpr_fcafpr, out fpr_usrfpr, out fpr_admfpr, out fpr_pwdfpr, out fpr_oplfpr,
                     out fpr_attfpr, out fpr_facfpr, out fpr_fpnfpr);
-                
-                    
-                
 
-                
+
+
+
+
 
                     if (result == 0)
                     {
@@ -139,7 +139,7 @@ namespace ComplementosPago.Controllers
         {
             try
             {
-                
+
                 OPR opr = new OPR();
                 opr.opr_keyopr = 0;
                 opr.opr_desopr = "Resplado de huellas OnDemand";
@@ -183,8 +183,8 @@ namespace ComplementosPago.Controllers
                     return false;
                 }
 
-                
-                
+
+
             }
             catch (Exception ex)
             {
@@ -225,7 +225,7 @@ namespace ComplementosPago.Controllers
                 {
                     return false;
                 }
-                
+
             }
             catch (Exception ex)
             {
@@ -333,41 +333,41 @@ namespace ComplementosPago.Controllers
 
         private async Task insBckp(OPR prcPrcs, ODT prcPdtl, List<OBK> lstBcks, FingerPrintsContext db)
         {
-           
-                try
+
+            try
+            {
+                using (var scope = _services.CreateScope())
                 {
-                    using (var scope = _services.CreateScope())
+                    var dbc = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+                    // Cargar datos requeridos
+                    var odtKey = prcPdtl.odt_keyodt;
+                    var fprKey = lstBcks.FirstOrDefault()?.fpr_keyfpr ?? 0;
+
+                    // Eliminar huellas existentes del mismo lector
+                    var huellasRegistradas = await dbc.OBAK.Where(f => f.fpr_keyfpr == fprKey).ToListAsync();
+
+                    var registroLoat = await db.LOAT
+                            .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                                  x.checadorId == this.lectorId &&
+                                                  x.fecha.Date == DateTime.Now.Date);
+
+
+                    dbc.OBAK.RemoveRange(huellasRegistradas);
+
+                    dbc.SaveChanges();
+
+
+                    foreach (var hu in lstBcks)
                     {
-                        var dbc = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
-                        // Cargar datos requeridos
-                        var odtKey = prcPdtl.odt_keyodt;
-                        var fprKey = lstBcks.FirstOrDefault()?.fpr_keyfpr ?? 0;
+                        var stf = dbc.STFS
+                            .AsNoTracking()
+                            .FirstOrDefault(x => x.stf_numstf == hu.stf_numstf);
 
-                        // Eliminar huellas existentes del mismo lector
-                        var huellasRegistradas = await dbc.OBAK.Where(f => f.fpr_keyfpr == fprKey).ToListAsync();
-
-                        var registroLoat = await db.LOAT
-                                .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
-                                                      x.checadorId == this.lectorId &&
-                                                      x.fecha.Date == DateTime.Now.Date);
-
-
-                        dbc.OBAK.RemoveRange(huellasRegistradas);
-
-                        dbc.SaveChanges();
-
-
-                        foreach (var hu in lstBcks)
+                        if (stf != null)
                         {
-                            var stf = dbc.STFS
-                                .AsNoTracking()
-                                .FirstOrDefault(x => x.stf_numstf == hu.stf_numstf);
-
-                            if (stf != null)
-                            {
-                                hu.stf_keystf = stf.stf_keystf;
-                            }
+                            hu.stf_keystf = stf.stf_keystf;
                         }
+                    }
 
                     if (registroLoat != null)
                     {
@@ -379,18 +379,18 @@ namespace ComplementosPago.Controllers
 
                     await dbc.OBAK.AddRangeAsync(lstBcks);
 
-                        // Guardar TODO de una sola vez
-                        await dbc.SaveChangesAsync();
+                    // Guardar TODO de una sola vez
+                    await dbc.SaveChangesAsync();
 
-                        await updPrcs(prcPrcs, prcPdtl, dbc);
-                    }
-                
+                    await updPrcs(prcPrcs, prcPdtl, dbc);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Error general en el guardado");
-                }
-            
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error general en el guardado");
+            }
+
         }
 
         private async Task updPrcs(OPR prcPrcs, ODT prcPdtl, FingerPrintsContext dbc)
@@ -416,5 +416,119 @@ namespace ComplementosPago.Controllers
             }
         }
 
+
+        public async Task<bool> realizarEliminacionChecadasLector(FPR lector, FingerPrintsContext db, LaboraContext lc, libFprZkx _libFprZkx, int procesoId)
+        {
+            try
+            {
+                this.lectorId = lector.fpr_keyfpr;
+                this.procesoId = procesoId;
+
+                // Validar día 1
+                if (DateTime.Now.Day != 1)
+                {
+                    _logger.LogInformation("Hoy no es día 1, no se ejecuta la eliminación de checadas para el lector {nombre}", lector.fpr_namfpr);
+                    return true;
+                }
+
+                _logger.LogInformation("Validando checadas antiguas del lector {nombre}", lector.fpr_namfpr);
+
+                // Calcular fechas
+                DateTime fechaFin = DateTime.Now.AddMonths(-2);
+                DateTime fechaIni = DateTime.MinValue;
+
+                // Obtener counts
+                int countOchd = await db.OCHD
+                    .Where(x => x.fpr_numfpr == lector.fpr_numfpr
+                             && x.ocd_datocd >= fechaIni
+                             && x.ocd_datocd <= fechaFin)
+                    .CountAsync();
+
+                int countOche = await db.OCHE
+                    .Where(x => x.fpr_numfpr == lector.fpr_numfpr
+                             && x.och_datoch >= fechaIni
+                             && x.och_datoch <= fechaFin)
+                    .CountAsync();
+
+                int countLbch = await lc.molochec
+                    .Where(x => x.che_keylec == lector.fpr_numfpr.ToString()
+                             && x.che_fecche >= fechaIni
+                             && x.che_fecche <= fechaFin)
+                    .CountAsync();
+
+                // Validar igualdad de counts
+                if (!(countOchd == countOche && countOche == countLbch))
+                {
+                    _logger.LogWarning("No se eliminaron checadas: los conteos no coinciden para el lector {nombre}. OCHD={ochd}, OCHE={oche}, LBCH={lbch}",
+                        lector.fpr_namfpr, countOchd, countOche, countLbch);
+
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId,
+                        $"No se eliminaron checadas: los conteos no coinciden para el lector {lector.fpr_namfpr}. OCHD={countOchd}, OCHE={countOche}, LBCH={countLbch}");
+
+                    return false;
+                }
+
+                // Si counts coinciden -> conectar y ejecutar SDK
+                if (_libFprZkx.zktConx(lector.fpr_ipafpr, lector.fpr_numfpr))
+                {
+                    bool resultado = _libFprZkx.zktDatt(lector.fpr_numfpr, true, fechaIni, fechaFin);
+
+                    if (!resultado)
+                    {
+                        _logger.LogError("Error al eliminar checadas del lector {nombre} entre {ini} y {fin}",
+                            lector.fpr_namfpr, fechaIni, fechaFin);
+
+                        await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId,
+                            $"Error al eliminar checadas del lector {lector.fpr_namfpr} entre {fechaIni} y {fechaFin}");
+
+                        return false;
+                    }
+
+                    // Si zktDatt fue exitoso -> eliminar registros de ochd y oche
+                    var ochdAEliminar = await db.OCHD
+                        .Where(x => x.fpr_numfpr == lector.fpr_numfpr
+                                 && x.ocd_datocd >= fechaIni
+                                 && x.ocd_datocd <= fechaFin)
+                        .ToListAsync();
+
+                    var ocheAEliminar = await db.OCHE
+                        .Where(x => x.fpr_numfpr == lector.fpr_numfpr
+                                 && x.och_datoch >= fechaIni
+                                 && x.och_datoch <= fechaFin)
+                        .ToListAsync();
+
+                    db.OCHD.RemoveRange(ochdAEliminar);
+                    db.OCHE.RemoveRange(ocheAEliminar);
+                    await db.SaveChangesAsync();
+
+                    _logger.LogInformation("Checadas del lector {nombre} eliminadas correctamente y registros de OCHD/OCHE borrados.", lector.fpr_namfpr);
+                    return true;
+                }
+                else
+                {
+                    _logger.LogWarning("No se pudo conectar al lector {nombre} para eliminar checadas", lector.fpr_namfpr);
+
+                    await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId,
+                        $"No se pudo conectar al lector {lector.fpr_namfpr} para eliminar checadas");
+
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al procesar la eliminación de checadas en el lector {nombre}", lector.fpr_namfpr);
+
+                await _lectoresController.RegistrarErrorBitacora(this.procesoId, this.lectorId,
+                    $"Error al procesar la eliminación de checadas en el lector {lector.fpr_namfpr}");
+
+                return false;
+            }
+        }
+
+
+
     }
+
+
+
 }
