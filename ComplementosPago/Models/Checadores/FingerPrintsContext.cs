@@ -42,6 +42,8 @@ namespace ModelContext.Models
         public DbSet<PRO> PRO { get; set; } //Procesos
         public DbSet<ESTPR> ESTPR { get; set; } //Estatus Procesos
         public DbSet<LOAT> LOAT { get; set; } //Log de Automatizaciones
+        public DbSet<COAT> COAT { get; set; } //Lista de correos
+        public DbSet<CFAT> CFAT { get; set; } //Configuracion del SMTP
 
 
 

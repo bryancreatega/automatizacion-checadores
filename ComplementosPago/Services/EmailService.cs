@@ -16,53 +16,124 @@ namespace ComplementosPago.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
-        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger, IServiceProvider serviceProvider)
         {
             _configuration = configuration;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         public async Task<bool> EnviarResumenGeneralProcesos(List<ResumenProceso> resumenes, List<PRO> procesos, List<ESTPR> estados)
         {
-            try
+            using (var scope = _serviceProvider.CreateScope())
             {
-                var smtpConfig = _configuration.GetSection("SmtpSettings");
-                var destinatarios = _configuration.GetSection("EmailDestinatarios").Get<List<string>>();
-
-                if (destinatarios == null || !destinatarios.Any())
+                var db = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+                try
                 {
-                    _logger.LogWarning("No hay destinatarios configurados para el correo de resumen");
-                    return false;
-                }
-
-                using (var client = new SmtpClient(smtpConfig["Host"], int.Parse(smtpConfig["Port"])))
-                {
-                    client.EnableSsl = bool.Parse(smtpConfig["EnableSsl"]);
-                    client.Credentials = new NetworkCredential(smtpConfig["UserName"], smtpConfig["Password"]);
-
-                    var mailMessage = new MailMessage
+                    var smtpConfig = await ObtenerConfiguracionSmtp(db);
+                    if (smtpConfig == null)
                     {
-                        From = new MailAddress(smtpConfig["FromEmail"], smtpConfig["FromName"]),
-                        Subject = $"Resumen de Procesos Automatizados - {DateTime.Now:dd/MM/yyyy}",
-                        Body = GenerarCuerpoCorreoGeneral(resumenes, procesos, estados),
-                        IsBodyHtml = true
-                    };
-
-                    foreach (var destinatario in destinatarios)
-                    {
-                        mailMessage.To.Add(destinatario);
+                        _logger.LogWarning("No se encontró configuración SMTP en la base de datos");
+                        return false;
                     }
 
-                    await client.SendMailAsync(mailMessage);
-                    _logger.LogInformation("Correo de resumen general enviado exitosamente");
-                    return true;
+                    var destinatarios = await ObtenerDestinatarios(db);
+                    if (destinatarios == null || !destinatarios.Any())
+                    {
+                        _logger.LogWarning("No hay destinatarios configurados en la base de datos");
+                        return false;
+                    }
+
+                    using (var client = new SmtpClient(smtpConfig.Host, smtpConfig.Port))
+                    {
+                        client.EnableSsl = smtpConfig.EnableSsl;
+                        client.Credentials = new NetworkCredential(smtpConfig.UserName, smtpConfig.Password);
+
+                        var mailMessage = new MailMessage
+                        {
+                            From = new MailAddress(smtpConfig.FromEmail, smtpConfig.FromName),
+                            Subject = $"Resumen de Procesos Automatizados - {DateTime.Now:dd/MM/yyyy}",
+                            Body = GenerarCuerpoCorreoGeneral(resumenes, procesos, estados),
+                            IsBodyHtml = true
+                        };
+
+                        foreach (var destinatario in destinatarios)
+                        {
+                            mailMessage.To.Add(destinatario);
+                        }
+
+                        await client.SendMailAsync(mailMessage);
+                        _logger.LogInformation("Correo de resumen general enviado exitosamente");
+                        return true;
+                    }
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al enviar correo de resumen general");
+                    return false;
+                }
+            }
+        }
+
+        private async Task<SmtpConfig> ObtenerConfiguracionSmtp(FingerPrintsContext db)
+        {
+            try
+            {
+                var configuraciones = await db.CFAT.ToListAsync();
+
+                if (!configuraciones.Any())
+                {
+                    _logger.LogWarning("No se encontraron configuraciones en la tabla CFAT");
+                    return null;
+                }
+
+                var config = new SmtpConfig
+                {
+                    Host = configuraciones.FirstOrDefault(c => c.Clave == "Host")?.Valor,
+                    Port = int.Parse(configuraciones.FirstOrDefault(c => c.Clave == "Port")?.Valor ?? "587"),
+                    UserName = configuraciones.FirstOrDefault(c => c.Clave == "UserName")?.Valor,
+                    Password = configuraciones.FirstOrDefault(c => c.Clave == "Password")?.Valor,
+                    FromEmail = configuraciones.FirstOrDefault(c => c.Clave == "FromEmail")?.Valor,
+                    FromName = configuraciones.FirstOrDefault(c => c.Clave == "FromName")?.Valor,
+                    EnableSsl = bool.Parse(configuraciones.FirstOrDefault(c => c.Clave == "EnableSsl")?.Valor ?? "true")
+                };
+
+                // Validar que todas las configuraciones necesarias estén presentes
+                if (string.IsNullOrEmpty(config.Host) || string.IsNullOrEmpty(config.UserName) ||
+                    string.IsNullOrEmpty(config.Password) || string.IsNullOrEmpty(config.FromEmail))
+                {
+                    _logger.LogWarning("Configuración SMTP incompleta en la base de datos");
+                    return null;
+                }
+
+                _logger.LogInformation("Configuración SMTP cargada correctamente desde la base de datos");
+                return config;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al enviar correo de resumen general");
-                return false;
+                _logger.LogError(ex, "Error al obtener configuración SMTP desde la base de datos");
+                return null;
+            }
+        }
+
+        private async Task<List<string>> ObtenerDestinatarios(FingerPrintsContext db)
+        {
+            try
+            {
+                var destinatarios = await db.COAT
+                    .Where(c => c.Activo == true)
+                    .Select(c => c.Correo)
+                    .ToListAsync();
+
+                _logger.LogInformation("Se encontraron {cantidad} destinatarios activos", destinatarios.Count);
+                return destinatarios;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener destinatarios desde la base de datos");
+                return new List<string>();
             }
         }
 
@@ -232,5 +303,17 @@ namespace ComplementosPago.Services
         public int EstadoId { get; set; }
         public DateTime Fecha { get; set; }
         public string Error { get; set; }
+    }
+
+    // Clase para manejar la configuración SMTP
+    public class SmtpConfig
+    {
+        public string Host { get; set; }
+        public int Port { get; set; }
+        public string UserName { get; set; }
+        public string Password { get; set; }
+        public string FromEmail { get; set; }
+        public string FromName { get; set; }
+        public bool EnableSsl { get; set; }
     }
 }

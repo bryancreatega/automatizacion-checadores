@@ -114,6 +114,8 @@ namespace ComplementosPago
 
                             foreach (var lector in lectores)
                             {
+
+                                var conexionFallida = false;
                                 _logger.LogInformation("Procesando lector: {ip} - {numero}", lector.fpr_ipafpr, lector.fpr_numfpr);
                                 List<OCD> lstOcd = new List<OCD>();
 
@@ -161,6 +163,10 @@ namespace ComplementosPago
                                 {
                                     try
                                     {
+                                        if (conexionFallida)
+                                        {
+                                            continue;
+                                        }
 
                                         _logger.LogInformation("Ejecutando proceso: {nombre} (ID: {id}) para lector {ip}",
                                             proceso.Nombre, proceso.Id, lector.fpr_ipafpr);
@@ -169,6 +175,7 @@ namespace ComplementosPago
 
                                         if (!conexionExitosa)
                                         {
+                                            conexionFallida = true;
                                             _logger.LogWarning("No se pudo establecer conexión con el lector {ip} después de 3 intentos. Continuando con el siguiente lector.",
                                                 lector.fpr_namfpr);
 
@@ -183,6 +190,26 @@ namespace ComplementosPago
 
                                             await db.BITA.AddAsync(bitacora);
                                             await db.SaveChangesAsync();
+
+                                            var registroLoatError = await db.LOAT
+                                               .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                   x.checadorId == lector.fpr_keyfpr &&
+                                                   x.fecha.Date == DateTime.Now.Date);
+
+                                            if (registroLoatError != null)
+                                            {
+                                                string descripcionError = bitacora?.descripcion ?? $"El proceso {proceso.Nombre} (Orden: {proceso.Orden}) falló para el lector {lector.fpr_namfpr}.";
+
+                                                resumenesLector.Add(new ResumenProceso
+                                                {
+                                                    LectorId = lector.fpr_keyfpr,
+                                                    Lector = lector,
+                                                    ProcesoId = proceso.Id,
+                                                    EstadoId = registroLoatError.estadoId,
+                                                    Fecha = registroLoatError.fecha,
+                                                    Error = descripcionError
+                                                });
+                                            }
 
                                             continue;
                                         }
@@ -219,22 +246,21 @@ namespace ComplementosPago
                                         switch (proceso.Nombre)
                                         {
                                             case "EXDI":
-                                                //resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
-                                                resultado = true;
+                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
                                                 break;
                                             case "RELE":
-                                                //resultado = await _respaldoLectores.realizarRespaldoHuellas(lector, db , _libFprZkx, proceso.Id);
-                                                resultado = true;
+                                                resultado = await _respaldoLectores.realizarRespaldoHuellas(lector, db , _libFprZkx, proceso.Id);
                                                 break;
                                             case "EXCH":
                                                 //resultado = await _extraccionChecadas.realizarExtracciones(lector, proceso.Id);
-                                                resultado = false;
+                                                resultado = true;
                                                 break;
                                             case "ENLA":
                                                 //resultado = await _envioLabora.realizarEnvioLabora(lector, db, proceso.Id);
                                                 resultado = true;
                                                 break;
                                             case "ELCH":
+                                                //resultado = await _respaldoLectores.realizarEliminacionChecadasLector(lector, db, _libFprZkx, proceso.Id)
                                                 resultado = true;
                                                 break;
                                             default:

@@ -137,6 +137,8 @@ namespace ComplementosPago.Controllers
 
         public async Task<bool> realizarRespaldoHuellas(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx, int procesoId)
         {
+            this.lectorId = lector.fpr_keyfpr;
+            this.procesoId = procesoId;
             try
             {
 
@@ -417,7 +419,7 @@ namespace ComplementosPago.Controllers
         }
 
 
-        public async Task<bool> realizarEliminacionChecadasLector(FPR lector, FingerPrintsContext db, LaboraContext lc, libFprZkx _libFprZkx, int procesoId)
+        public async Task<bool> realizarEliminacionChecadasLector(FPR lector, FingerPrintsContext db, libFprZkx _libFprZkx, int procesoId)
         {
             try
             {
@@ -450,11 +452,20 @@ namespace ComplementosPago.Controllers
                              && x.och_datoch <= fechaFin)
                     .CountAsync();
 
-                int countLbch = await lc.molochec
+                int countLbch = 0;
+
+                using (var scope = _services.CreateScope())
+                {
+                    var laboraDb = scope.ServiceProvider.GetRequiredService<LaboraContext>();
+
+                    countLbch = await laboraDb.molochec
                     .Where(x => x.che_keylec == lector.fpr_numfpr.ToString()
                              && x.che_fecche >= fechaIni
                              && x.che_fecche <= fechaFin)
                     .CountAsync();
+                }
+
+                    
 
                 // Validar igualdad de counts
                 if (!(countOchd == countOche && countOche == countLbch))
