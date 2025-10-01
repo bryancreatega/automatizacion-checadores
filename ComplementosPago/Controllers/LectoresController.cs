@@ -86,5 +86,35 @@ namespace ComplementosPago.Controllers
             }
         }
 
+        public async Task RegistrarBitacora(int procesoId, int lectorId, string descripcion)
+        {
+            try
+            {
+                using (var scope = _services.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<FingerPrintsContext>();
+
+                    var bitacora = new BIT
+                    {
+                        id = 0,
+                        procesoId = procesoId,
+                        lectorId = lectorId,
+                        descripcion = descripcion,
+                        fechaEnvio = DateTime.Now
+                    };
+
+                    await db.BITA.AddAsync(bitacora);
+                    await db.SaveChangesAsync();
+
+                    _logger.LogInformation($"Registrado en bitácora: {descripcion}");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error al registrar en bitácora: {ex.Message}");
+            }
+        }
+
     }
 }

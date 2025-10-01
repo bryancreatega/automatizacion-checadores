@@ -53,11 +53,6 @@ namespace ComplementosPago.Controllers
             {
                 _logger.LogInformation("Enviando información del lector {nombre} a labora", lector.fpr_namfpr);
 
-                var registroLoat = await db.LOAT
-                               .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
-                                                     x.checadorId == this.lectorId &&
-                                                     x.fecha.Date == DateTime.Now.Date);
-
                 DataTable datLab = null;
                 string prd_nomprd = string.Empty;
 
@@ -171,13 +166,18 @@ namespace ComplementosPago.Controllers
                     //db.OCHD.UpdateRange(lstMolc);
                     db.SaveChanges();
 
+                    var registroLoat = await db.LOAT
+                       .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                             x.checadorId == this.lectorId &&
+                                             x.fecha.Date == DateTime.Now.Date);
+
                     if (registroLoat != null)
                     {
                         registroLoat.totalesPrevios = totalPrev.Count();
-                        registroLoat.totalesPosterior = totalPosterior;
+                        registroLoat.totalesPosterior = totalPrev.Count()+totalPosterior;
                         
                         db.LOAT.Update(registroLoat);
-                        db.SaveChanges(); 
+                        await db.SaveChangesAsync(); 
                     }
 
                     lstCht = new List<OCH>();

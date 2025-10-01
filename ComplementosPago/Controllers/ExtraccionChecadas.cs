@@ -271,7 +271,7 @@ namespace ComplementosPago.Controllers
 
                 #region lista a instertar huellas del respaldo
                 DateTime dttVali = DateTime.Now;
-                var lstMark = db.OCHE.AsNoTracking().Where(x => x.fpr_keyfpr == lector.fpr_keyfpr && x.och_dtpoch == dttVali.Date).ToList();
+                var lstMark = db.OCHE.AsNoTracking().Where(x => x.fpr_keyfpr == lector.fpr_keyfpr).ToList();
 
                 var registroLoat = await db.LOAT
                                 .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
@@ -321,14 +321,15 @@ namespace ComplementosPago.Controllers
                                     }).ToList();
                     lstCht.AddRange(lstChc);
                     db.OCHE.UpdateRange(lstChc.ToList());//insOchk.Where(x => x.och_keyoch == 0).ToList());//(lstOch);//ctx.OBAK.AddRange(insObak);//Where(x => x.och_keyoch == 0).//Go062019.
-                    db.SaveChanges();
+                    await db.SaveChangesAsync();
 
                     if (registroLoat != null)
                     {
                         registroLoat.totalesPrevios = lstMark.Count();
-                        registroLoat.totalesPosterior = lstChc.Count();
+                        registroLoat.totalesPosterior = lstMark.Count() + lstChc.Count();
 
                         db.LOAT.Update(registroLoat);
+                        await db.SaveChangesAsync();
                     }
 
                     #region llenado de OCHD
@@ -390,7 +391,7 @@ namespace ComplementosPago.Controllers
                                             per_keyper = periodo
                                         }).ToList();
                     db.OCHD.UpdateRange(lstChd);
-                    db.SaveChanges();
+                    await db.SaveChangesAsync();
                     lstOcd.AddRange(lstChd);
                     filteredZerolstOcd = lstChd;
                     #endregion

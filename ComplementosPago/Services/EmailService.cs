@@ -223,16 +223,18 @@ namespace ComplementosPago.Services
                         estados.FirstOrDefault(e => e.Id == registro.EstadoId)?.Nombre ?? "No ejecutado" :
                         "No ejecutado";
 
+                    string nuevoEstado = (estado == "Iniciado" || estado == "Creado") ? "Error" : estado;
+
                     string estadoClass = estado.ToLower() switch
                     {
                         "terminado" => "status-completed",
                         "error" => "status-error",
-                        "iniciado" => "status-processing",
-                        "creado" => "status-created",
+                        "iniciado" => "status-error",
+                        "creado" => "status-error",
                         _ => ""
                     };
 
-                    sb.AppendLine($"<td class='{estadoClass}'>{estado}</td>");
+                    sb.AppendLine($"<td class='{estadoClass}'>{nuevoEstado}</td>");
                 }
 
                 sb.AppendLine("</tr>");
@@ -250,7 +252,7 @@ namespace ComplementosPago.Services
                                     <th>Proceso</th>
                                     <th>Estado</th>
                                     <th>Fecha/Hora</th>
-                                    <th>Error</th>
+
 
                                 </tr>
                             </thead>
@@ -261,12 +263,14 @@ namespace ComplementosPago.Services
                 var proceso = procesos.FirstOrDefault(p => p.Id == resumen.ProcesoId);
                 var estado = estados.FirstOrDefault(e => e.Id == resumen.EstadoId);
 
+                string nuevoEstado = (estado?.Nombre == "Iniciado" || estado?.Nombre == "Creado") ? "Error" : estado?.Nombre ?? "N/A";
+
                 string estadoClass = estado?.Nombre?.ToLower() switch
                 {
                     "terminado" => "status-completed",
                     "error" => "status-error",
-                    "iniciado" => "status-processing",
-                    "creado" => "status-created",
+                    "iniciado" => "status-error",
+                    "creado" => "status-error",
                     _ => ""
                 };
 
@@ -274,9 +278,9 @@ namespace ComplementosPago.Services
                     <tr>
                         <td>{resumen.Lector.fpr_namfpr}</td>
                         <td>{proceso?.Descripcion ?? "N/A"}</td>
-                        <td class='{estadoClass}'>{estado?.Nombre ?? "N/A"}</td>
+                        <td class='{estadoClass}'>{nuevoEstado}</td>
                         <td>{resumen.Fecha:dd/MM/yyyy HH:mm}</td>                       
-                        <td>{resumen.Error ?? ""}</td>
+
 
                     </tr>");
             }

@@ -175,7 +175,7 @@ namespace ComplementosPago.Controllers
                 await db.SaveChangesAsync();
 
                 var proceso = await procesoDeRespaldo(lector, db, opr.opr_keyopr, _libFprZkx);
-
+                
                 if (proceso)
                 {
                     return true;
@@ -465,7 +465,10 @@ namespace ComplementosPago.Controllers
                     .CountAsync();
                 }
 
-                    
+                var registroLoat = await db.LOAT
+                                .FirstOrDefaultAsync(x => x.procesoId == this.procesoId &&
+                                                      x.checadorId == this.lectorId &&
+                                                      x.fecha.Date == DateTime.Now.Date);
 
                 // Validar igualdad de counts
                 if (!(countOchd == countOche && countOche == countLbch))
@@ -511,6 +514,15 @@ namespace ComplementosPago.Controllers
                     db.OCHD.RemoveRange(ochdAEliminar);
                     db.OCHE.RemoveRange(ocheAEliminar);
                     await db.SaveChangesAsync();
+
+                    if (registroLoat != null)
+                    {
+                        registroLoat.totalesPrevios = countOchd;
+                        registroLoat.totalesPosterior = 0;
+
+                        db.LOAT.Update(registroLoat);
+                        await db.SaveChangesAsync();
+                    }
 
                     _logger.LogInformation("Checadas del lector {nombre} eliminadas correctamente y registros de OCHD/OCHE borrados.", lector.fpr_namfpr);
                     return true;

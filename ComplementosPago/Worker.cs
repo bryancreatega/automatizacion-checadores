@@ -246,10 +246,12 @@ namespace ComplementosPago
                                         switch (proceso.Nombre)
                                         {
                                             case "EXDI":
-                                                resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
+                                                //resultado = await _respaldoLectores.realizarRespaldoLector(lector, db , _libFprZkx, proceso.Id);
+                                                resultado = true;
                                                 break;
                                             case "RELE":
-                                                resultado = await _respaldoLectores.realizarRespaldoHuellas(lector, db , _libFprZkx, proceso.Id);
+                                                //resultado = await _respaldoLectores.realizarRespaldoHuellas(lector, db , _libFprZkx, proceso.Id);
+                                                resultado = true;
                                                 break;
                                             case "EXCH":
                                                 //resultado = await _extraccionChecadas.realizarExtracciones(lector, proceso.Id);
@@ -261,7 +263,7 @@ namespace ComplementosPago
                                                 break;
                                             case "ELCH":
                                                 //resultado = await _respaldoLectores.realizarEliminacionChecadasLector(lector, db, _libFprZkx, proceso.Id)
-                                                resultado = true;
+                                                resultado = false;
                                                 break;
                                             default:
                                                 _logger.LogWarning("Proceso {nombre} no existe", proceso.Nombre);
@@ -319,38 +321,43 @@ namespace ComplementosPago
                                         {
                                             _logger.LogInformation("Proceso {nombre} (Orden: {orden}) ejecutado correctamente para el lector {ip}",
                                                 proceso.Nombre, proceso.Orden, lector.fpr_namfpr);
-                                            await _lectoresController.RegistrarErrorBitacora(proceso.Id, lector.fpr_keyfpr, $"Proceso {proceso.Nombre} (Orden: {proceso.Orden}) ejecutado correctamente para el lector");
+                                            await _lectoresController.RegistrarBitacora(proceso.Id, lector.fpr_keyfpr, $"Proceso {proceso.Nombre} (Orden: {proceso.Orden}) ejecutado correctamente para el lector");
 
-                                            var registroLoat = await db.LOAT
-                                                .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
-                                                    x.checadorId == lector.fpr_keyfpr &&
-                                                    x.fecha.Date == DateTime.Now.Date);
 
-                                            if (registroLoat != null)
+                                            using (var sco = _services.CreateScope())
                                             {
-                                                registroLoat.estadoId = estatusProcesos.FirstOrDefault(e => e.Nombre == "Terminado").Id;
+                                                var dbc = sco.ServiceProvider.GetRequiredService<FingerPrintsContext>();
 
-                                                db.LOAT.Update(registroLoat);
-                                                await db.SaveChangesAsync();
-                                            }
+                                                var registroLoat = await dbc.LOAT
+                                               .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                   x.checadorId == lector.fpr_keyfpr &&
+                                                   x.fecha.Date == DateTime.Now.Date);
 
-                                            var registroLoatGet = await db.LOAT
-                                                .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
-                                                    x.checadorId == lector.fpr_keyfpr &&
-                                                    x.fecha.Date == DateTime.Now.Date);
-
-                                            if (registroLoatGet != null)
-                                            {
-                                                resumenesLector.Add(new ResumenProceso
+                                                if (registroLoat != null)
                                                 {
-                                                    LectorId = lector.fpr_keyfpr,
-                                                    Lector = lector,
-                                                    ProcesoId = proceso.Id,
-                                                    EstadoId = registroLoatGet.estadoId,
-                                                    Fecha = registroLoatGet.fecha
-                                                });
-                                            }
+                                                    registroLoat.estadoId = estatusProcesos.FirstOrDefault(e => e.Nombre == "Terminado").Id;
 
+                                                    dbc.LOAT.Update(registroLoat);
+                                                    await dbc.SaveChangesAsync();
+                                                }
+
+                                                var registroLoatGet = await dbc.LOAT
+                                                    .FirstOrDefaultAsync(x => x.procesoId == proceso.Id &&
+                                                        x.checadorId == lector.fpr_keyfpr &&
+                                                        x.fecha.Date == DateTime.Now.Date);
+
+                                                if (registroLoatGet != null)
+                                                {
+                                                    resumenesLector.Add(new ResumenProceso
+                                                    {
+                                                        LectorId = lector.fpr_keyfpr,
+                                                        Lector = lector,
+                                                        ProcesoId = proceso.Id,
+                                                        EstadoId = registroLoatGet.estadoId,
+                                                        Fecha = registroLoatGet.fecha
+                                                    });
+                                                }
+                                            }    
                                         }
 
                                         
